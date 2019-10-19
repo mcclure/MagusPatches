@@ -1,10 +1,11 @@
 #ifndef __Saw4Patch_hpp__
 #define __Saw4Patch_hpp__
 
+// 4 saws, each with its own detune and phase-offset controls.
 // Author Andi McClure. License https://creativecommons.org/publicdomain/zero/1.0/
 
-#include "StompBox.h"
-#include "VoltsPerOctave.h"
+#include "OpenWareMidiControl.h"
+//#include "VoltsPerOctave.h"
 
 class Saw4Patch : public Patch {
 private:
@@ -13,9 +14,12 @@ private:
   PatchParameterId microtoneParam[4];
   PatchParameterId phaseOffsetParam[4];
   PatchParameterId waveParam[4];
+  PatchParameterId baseParam;
+  PatchParameterId overdriveParam;
 
   double phase[4];
 public:
+  // Add a block of 4 parameters for a single oscillator
   void add4Params(PatchParameterId base, const char *name, int id) {
     char scratch[16];
     PatchParameterId param;
@@ -40,15 +44,16 @@ public:
     registerParameter(param, scratch);
     waveParam[id] = param;
   }
-  Saw4Patch(){
-    // OSC
-    registerParameter(PARAMETER_A, "Base Semi");
-    registerParameter(PARAMETER_B, "Overdrive");
-    
-    add4Params(PARAMETER_AA, "A", 0);
-    add4Params(PARAMETER_BA, "B", 1);
-    add4Params(PARAMETER_CA, "C", 2);
-    add4Params(PARAMETER_DA, "D", 3);
+  Saw4Patch(){        
+    add4Params(PARAMETER_A, "A", 0);
+    add4Params((PatchParameterId)(PARAMETER_A+4), "B", 1);
+    add4Params((PatchParameterId)(PARAMETER_A+8), "C", 2);
+    add4Params((PatchParameterId)(PARAMETER_A+12), "D", 3);
+
+    baseParam = (PatchParameterId)(PARAMETER_A+16);
+    registerParameter(baseParam, "Base Semi");
+    overdriveParam = (PatchParameterId)(PARAMETER_A+17);
+    registerParameter(overdriveParam, "Overdrive");
 
     memset(phase, 0, sizeof(phase));
 
@@ -72,33 +77,43 @@ public:
     FloatArray left = buffer.getSamples(LEFT_CHANNEL);
     FloatArray right = buffer.getSamples(RIGHT_CHANNEL);
 
-    // synth voice
-    float base = midinote + getParameterValue(PARAMETER_A);
-    float overdrive = getParameterValue(PARAMETER_B)/4.0f;
+    // Parameters for entire pass
+    float base = midinote + getParameterValue(baseParam);
+    float overdrive = getParameterValue(overdriveParam)/4.0f;
 
+    // Buffers
     int size = min(left.getSize(), right.getSize());
     float *leftData = left.getData();
     float *rightData = right.getData();
 
-
     for(int i = 0; i < size; i++ ) {
-      float &leftSample = leftData[i];
-      leftSample = 0;
+      float sample = 0;
       for(int w = 0; w < 4; w++) {
+        // Parameters for single wave evaluation
         float semitone = getParameterValue(semitoneParam[w]);
         float microtone = getParameterValue(microtoneParam[w]);
         float phaseOffset = getParameterValue(phaseOffsetParam[w]);
-        phase[w] = phase[w] + 0.01;
-        float value = phase[w];
+        // Wavelength of note to play (haven't checked this math)
+        float playTone = (base + semitone + microtone/128.0f)/12.0f;
 
+        // Update phase and wrap into -1..1 range
+        phase[w] = fmod( (phase[w] + 2.0f/44100.f * /*exp2f(playTone)*/), 1.0 );
+
+        // Wave value
+        float value = phase[w];
         setParameterValue(waveParam[w], value);
 
-        leftSample += value*getParameterValue(PARAMETER_B);
+        // Add wave to sample
+        sample += value*overdrive;
       }
-      leftSample = max(-1, (min(1, leftSample)));
-      rightData[i] = leftSample;
+      // Clamp sample to -1..1
+      sample = max(-1, (min(1, sample)));
+
+      // Write sample
+      leftData[i] = sample;
+      rightData[i] = sample;
     }
   }
 };
 
-#endif   // __KickBoxPatch_hpp__
+#endif   // __Saw4Patch_hpp__
