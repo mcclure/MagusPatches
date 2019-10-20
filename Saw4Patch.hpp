@@ -18,28 +18,34 @@ private:
   PatchParameterId overdriveParam;
 
   double phase[4];
+
+  // Parameters are passed out (TOP ROW THEN BOTTOM ROW) horizontally
+  // But we want them to be passed out in 2x2 blocks of 4, left to right
+  PatchParameterId patchForSlot(int i) {
+    return PatchParameterId((i & 1) | ( (i & 2) << 2 ) | ( (i & 12) >> 1 ));
+  }
 public:
   // Add a block of 4 parameters for a single oscillator
   void add4Params(PatchParameterId base, const char *name, int id) {
     char scratch[16];
     PatchParameterId param;
 
-    param = (PatchParameterId)(base + 0);
+    param = patchForSlot(base + 0);
     strncpy(scratch, "Semitone ", 16); strncat(scratch, name, 16);
     registerParameter(param, scratch);
     microtoneParam[id] = param;
 
-    param = (PatchParameterId)(base + 1);
+    param = patchForSlot(base + 1);
     strncpy(scratch, "Microtone ", 16); strncat(scratch, name, 16);
     registerParameter(param, scratch);
     semitoneParam[id] = param;
 
-    param = (PatchParameterId)(base + 2);
+    param = patchForSlot(base + 2);
     strncpy(scratch, "Phase ", 16); strncat(scratch, name, 16);
     registerParameter(param, scratch);
     phaseOffsetParam[id] = param;
 
-    param = (PatchParameterId)(base + 3);
+    param = patchForSlot(base + 3);
     strncpy(scratch, "Wave ", 16); strncat(scratch, name, 16); strncat(scratch, ">", 16);
     registerParameter(param, scratch);
     waveParam[id] = param;
@@ -80,38 +86,51 @@ public:
     // Parameters for entire pass
     float base = midinote + getParameterValue(baseParam);
     float overdrive = getParameterValue(overdriveParam)/4.0f;
+    float sampleRateDiv2 = getSampleRate() / 2.0f;
 
     // Buffers
     int size = min(left.getSize(), right.getSize());
     float *leftData = left.getData();
     float *rightData = right.getData();
 
+    float semitone[4];
+    float microtone[4];
+    float phaseOffset[4];
+    float waveStep[4];
+
+    for(int w = 0; w < 4; w++) {
+      semitone[w] = getParameterValue(semitoneParam[w]);
+      microtone[w] = getParameterValue(microtoneParam[w]);
+      phaseOffset[w] = getParameterValue(phaseOffsetParam[w]);
+      // Haven't checked this math
+      float playTone = (base + semitone[w] + microtone[w]/128.0f - 69)/12.0f; // Power-2 offset from A440
+      waveStep[w] = (440*exp2(playTone)) / sampleRateDiv2;
+    }
+
     for(int i = 0; i < size; i++ ) {
       float sample = 0;
       for(int w = 0; w < 4; w++) {
         // Parameters for single wave evaluation
-        float semitone = getParameterValue(semitoneParam[w]);
-        float microtone = getParameterValue(microtoneParam[w]);
-        float phaseOffset = getParameterValue(phaseOffsetParam[w]);
-        // Wavelength of note to play (haven't checked this math)
-        float playTone = (base + semitone + microtone/128.0f)/12.0f;
 
         // Update phase and wrap into -1..1 range
-        phase[w] = fmod( (phase[w] + 2.0f/44100.f * /*exp2f(playTone)*/), 1.0 );
+        phase[w] = fmodf( (phase[w] + waveStep[w]), 1.0 );
 
         // Wave value
-        float value = phase[w];
-        setParameterValue(waveParam[w], value);
+        float value = fmodf(phase[w] + phaseOffset[w], 1.0f); //phase[w]; //fmod( phase[w] + phaseOffset[w], 1.0 );
 
         // Add wave to sample
         sample += value*overdrive;
       }
       // Clamp sample to -1..1
-      sample = max(-1, (min(1, sample)));
+      sample = max(-1.0f, (min(1.0f, sample)));
 
       // Write sample
       leftData[i] = sample;
       rightData[i] = sample;
+    }
+
+    for(int w = 0; w < 4; w++) {
+      setParameterValue(waveParam[w], phase[w]);
     }
   }
 };
