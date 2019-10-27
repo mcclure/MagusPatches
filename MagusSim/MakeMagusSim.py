@@ -12,7 +12,7 @@ import os.path
 import tempfile
 import subprocess
 try:
-    import click 
+    import click
 except ImportError:
     sys.stderr.write("Error: \"Click\" module missing. Run `pip install click`\n")
     sys.exit(1)
@@ -62,6 +62,7 @@ def make(infile, _class, cxx, output, include):
 // TODO: Pull in more code from actual openware/OwlProgram repos?
 
 #import <algorithm>
+#import <vector>
 using std::min;
 using std::max;
 
@@ -132,9 +133,13 @@ enum PatchButtonId {{
 }};
 
 struct Patch {{
-    void registerParameter(PatchParameterId, const char *) {{}}
-    float getParameterValue(PatchParameterId) {{ return 0; }} // TODO
-    void  setParameterValue(PatchParameterId, float) {{}}     // TODO
+    std::vector<float> _parameters;
+    void registerParameter(PatchParameterId _id, const char *) {{
+        int need = (int)_id + 1;
+        if (_parameters.size() <= need) _parameters.resize(need);
+    }}
+    float getParameterValue(PatchParameterId id) {{ return _parameters[(int)id]; }} // TODO
+    void  setParameterValue(PatchParameterId id, float v) {{ _parameters[(int)id] = v; }}     // TODO
     float getSampleRate() {{ return {sampleRate}; }}
 }};
 
@@ -248,9 +253,10 @@ int main(int argc, char **argv) {{
 
         if (human) {{
             for(int idx = 0; idx < currentFrameSize; idx++)
-                printf("%8.f %8.f\\n", buffer._left._data[idx], buffer._right._data[idx]);
+                printf("%8.8f %8.8f\\n", buffer._left._data[idx], buffer._right._data[idx]);
         }} else {{
             mix.reserve(currentFrameSize*2);
+            mix.clear();
             for(int idx = 0; idx < currentFrameSize; idx++) {{
                 mix.push_back(buffer._left._data[idx]);
                 mix.push_back(buffer._right._data[idx]);

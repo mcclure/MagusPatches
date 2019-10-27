@@ -80,13 +80,17 @@ public:
   void buttonChanged(PatchButtonId bid, uint16_t value, uint16_t samples){
   }
 
+  inline static float mod11(float f) {
+    return fmodf(f+1, 2)-1;
+  }
+
   void processAudio(AudioBuffer& buffer){
     FloatArray left = buffer.getSamples(LEFT_CHANNEL);
     FloatArray right = buffer.getSamples(RIGHT_CHANNEL);
 
     // Parameters for entire pass
     float base = midinote + getParameterValue(baseParam);
-    float overdrive = getParameterValue(overdriveParam)/4.0f;
+    float overdrive = (1 + getParameterValue(overdriveParam)*16.0f)/4.0f;
     float sampleRateDiv2 = getSampleRate() / 2.0f;
 
     // Buffers
@@ -114,17 +118,17 @@ public:
         // Parameters for single wave evaluation
 
         // Update phase and wrap into -1..1 range
-        phase[w] = fmodf( (phase[w] + waveStep[w]), 1.0 );
+        phase[w] = mod11(phase[w] + waveStep[w]);
 
         // Wave value
-        float value = fmodf(phase[w] + phaseOffset[w], 1.0f); //phase[w]; //fmod( phase[w] + phaseOffset[w], 1.0 );
+        float value = mod11(phase[w] + phaseOffset[w]); //phase[w]; //fmod( phase[w] + phaseOffset[w], 1.0 );
 
         // Add wave to sample
         sample += value*overdrive;
       }
       // Clamp sample to -1..1
       sample = max(-1.0f, (min(1.0f, sample)));
-      
+
       // Write sample
       leftData[i] = sample;
       rightData[i] = sample;
