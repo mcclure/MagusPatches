@@ -15,7 +15,7 @@ private:
   PatchParameterId microtoneParam[4];
   PatchParameterId phaseOffsetParam[4];
   PatchParameterId waveParam[4];
-  PatchParameterId mixParam[4];
+  PatchParameterId mixParam[2];
   PatchParameterId baseParam;
   PatchParameterId overdriveParam;
 
@@ -35,13 +35,13 @@ public:
     param = patchForSlot(base + 0);
     strncpy(scratch, "Semitone ", 16); strncat(scratch, name, 16);
     registerParameter(param, scratch);
-    microtoneParam[id] = param;
+    semitoneParam[id] = param;
     setParameterValue(param, 0.5);
 
     param = patchForSlot(base + 1);
     strncpy(scratch, "Microtone ", 16); strncat(scratch, name, 16);
     registerParameter(param, scratch);
-    semitoneParam[id] = param;
+    microtoneParam[id] = param;
     setParameterValue(param, 0.5);
 
     param = patchForSlot(base + 2);
@@ -52,8 +52,7 @@ public:
     param = patchForSlot(base + 3);
     strncpy(scratch, "Wave ", 16); strncat(scratch, name, 16); strncat(scratch, ">", 16);
     registerParameter(param, scratch);
-    mixParam[id] = param;
-    setParameterValue(param, 1.0);
+    waveParam[id] = param;
   }
   Saw4Patch(){        
     add4Params(PARAMETER_A, "A", 0);
@@ -67,12 +66,12 @@ public:
     overdriveParam = (PatchParameterId)(PARAMETER_A+17);
     registerParameter(overdriveParam, "Overdrive");
 
-    for(int w = 0; w < 4; w++) {
-      char scratch[6] = "Mix X";
-      scratch[4] = 'A' + w;
-      PatchParameterId param = patchForSlot(PARAMETER_A + 18 + w);
-      registerParameter(param, scratch);
-      waveParam[w] = param;
+    for(int w = 0; w < 2; w++) {
+      const char *label = w == 0 ? "Mix- BCD" : "Mix- CD";
+      PatchParameterId param = (PatchParameterId)(PARAMETER_A + 18 + w);
+      registerParameter(param, label);
+      mixParam[w] = param;
+      setParameterValue(param, 1.0);
     }
 
     memset(phase, 0, sizeof(phase));
@@ -107,7 +106,7 @@ public:
 
     // Parameters for entire pass
     float base = midinote + offsetToSemitones(getParameterValue(baseParam));
-    float overdrive = (1 + getParameterValue(overdriveParam)*16.0f)/4.0f;
+    float overdrive = (1 + getParameterValue(overdriveParam)*32.0f)/4.0f;
     float sampleRateDiv2 = getSampleRate() / 2.0f;
 
     // Buffers
@@ -119,13 +118,21 @@ public:
     float microtone[4];
     float phaseOffset[4];
     float waveStep[4];
+    float mix[4];
+
+    float mixBCD = getParameterValue(mixParam[0]);
+    float mixCD =  getParameterValue(mixParam[1]);
 
     for(int w = 0; w < 4; w++) {
       semitone[w] = offsetToSemitones(getParameterValue(semitoneParam[w]));
-      microtone[w] = (getParameterValue(microtoneParam[w]) - 0.5)*2;
+      microtone[w] = getParameterValue(microtoneParam[w]) - 0.5;
       phaseOffset[w] = getParameterValue(phaseOffsetParam[w]);
-      // Haven't checked this math
-      float playTone = (base + semitone[w] + microtone[w]/128.0f - 69)/12.0f; // Power-2 offset from A440 (69)
+
+      mix[w] = 1;
+      if (w>0) mix[w] *= mixBCD;
+      if (w>1) mix[w] *= mixCD;
+
+      float playTone = (base + semitone[w] + microtone[w] - 69)/12.0f; // Power-2 offset from A440 (69)
       waveStep[w] = (440*exp2(playTone)) / sampleRateDiv2;
     }
 
@@ -141,7 +148,7 @@ public:
         float value = mod11(phase[w] + phaseOffset[w]); //phase[w]; //fmod( phase[w] + phaseOffset[w], 1.0 );
 
         // Add wave to sample
-        sample += value*overdrive*mixParam[w];
+        sample += value*overdrive*mix[w];
       }
       // Clamp sample to -1..1
       sample = max(-1.0f, (min(1.0f, sample)));
