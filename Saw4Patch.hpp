@@ -5,6 +5,7 @@
 // Author Andi McClure. License https://creativecommons.org/publicdomain/zero/1.0/
 
 #include "OpenWareMidiControl.h"
+#include "math.h"
 //#include "VoltsPerOctave.h"
 
 class Saw4Patch : public Patch {
@@ -123,7 +124,7 @@ public:
       }
       // Clamp sample to -1..1
       sample = max(-1.0f, (min(1.0f, sample)));
-
+      
       // Write sample
       leftData[i] = sample;
       rightData[i] = sample;
