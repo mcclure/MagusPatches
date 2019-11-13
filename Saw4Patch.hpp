@@ -82,11 +82,14 @@ public:
   ~Saw4Patch(){
   }
 
-  void noteOn(uint8_t note, uint16_t velocity, uint16_t samples){
-    midinote = note;
-  }
-
-  void noteOff(uint8_t note, uint16_t samples){
+  void processMidi(MidiMessage msg){
+    switch (msg.getStatus()) {
+      // Key on
+      case 0x90:
+        midinote = msg.getNote();
+        break;
+      default:break;
+    }
   }
 
   void buttonChanged(PatchButtonId bid, uint16_t value, uint16_t samples){
