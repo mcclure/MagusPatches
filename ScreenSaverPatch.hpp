@@ -5,8 +5,6 @@
 // Author Andi McClure. License https://creativecommons.org/publicdomain/zero/1.0/
 
 #include "OpenWareMidiControl.h"
-#include "math.h"
-//#include "VoltsPerOctave.h"
 
 #define ACCUMULATOR_START 0x9A9A9A9A
 #define ACCUMULATOR_MULT  0xA9A9A9A9
