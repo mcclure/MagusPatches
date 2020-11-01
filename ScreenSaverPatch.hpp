@@ -67,7 +67,7 @@ public:
     memset(rightData, 0, size*sizeof(float));
   }
 
-#ifdef OWL_MAGUS
+#ifdef USE_SCREEN
   void processScreen(ScreenBuffer& screen){
     int height = screen.getHeight();
     int width = screen.getWidth();
@@ -80,6 +80,13 @@ public:
     uint32_t x = entropy % width;
 
     const char *num = a2c(frame++);
+
+    if (invert)
+      screen.setTextColour(BLACK, WHITE);
+    else
+      screen.setTextColour(WHITE, BLACK);
+
+    screen.clear();
     screen.print(x, y, num);
   }
 #else

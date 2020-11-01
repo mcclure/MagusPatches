@@ -12,7 +12,7 @@ For instructions on using MakeMagusSim.py, run `./MagusSim/MakeMagusSim.py --hel
 
 For instructions on using the standalone program, run `./Saw4Patch --help` (or whatever the name is).
 
-Some parts of the OWL API are not supported inside the simulator. You can mark sections of code that don't need to run in the simulator (like MIDI) with `#ifndef OWL_SIMULATOR`.
+Some parts of the OWL API are not supported inside the simulator. You can mark sections of code that don't need to run in the simulator (like MIDI) with `#ifndef OWL_SIMULATOR` (or `#ifdef OWL_MAGUS` or `#ifdef USE_SCREEN`).
 
 Here is an example of using MagusSim:
 

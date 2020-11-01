@@ -5,9 +5,13 @@ Command line instructions
 git clone git@github.com:pingdynasty/FirmwareSender.git
 git clone git@github.com:pingdynasty/OwlProgram.git
 cd OwlProgram && rm -r PatchSource && git clone git@github.com:mcclure/MagusPatches.git PatchSource
-(cd ../FirmwareSender/Builds/MacOSX && xcodebuild -configuration Release)
+(cd ../FirmwareSender/Builds/MacOSX && xcodebuild)
 
 # To test (from OwlProgram)
 
 make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=Magus
-../FirmwareSender/Builds/MacOSX/build/Release/FirmwareSender -in Build/patch.bin -out OWL-MIDI -run
+../FirmwareSender/Builds/MacOSX/build/Debug/FirmwareSender -in Build/patch.bin -out OWL-MIDI -run
+
+# To test (from PatchSource directory)
+
+(cd .. && make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=Magus && ../FirmwareSender/Builds/MacOSX/build/Debug/FirmwareSender -in Build/patch.bin -out OWL-MIDI -run)
