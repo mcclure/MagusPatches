@@ -82,6 +82,7 @@ public:
   ~Saw4Patch(){
   }
 
+#ifndef OWL_SIMULATOR
   void processMidi(MidiMessage msg){
     switch (msg.getStatus()) {
       // Key on
@@ -91,6 +92,7 @@ public:
       default:break;
     }
   }
+#endif
 
   void buttonChanged(PatchButtonId bid, uint16_t value, uint16_t samples){
   }

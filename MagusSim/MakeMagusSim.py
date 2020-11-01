@@ -66,6 +66,8 @@ def make(infile, _class, cxx, output, include):
 using std::min;
 using std::max;
 
+#define OWL_SIMULATOR 1
+
 // Enum copied from Openware repo, git:76c941b2e7b2, OpenWareMidiControl.h
 enum PatchParameterId {{
   PARAMETER_A,
