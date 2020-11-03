@@ -12,6 +12,7 @@
 #include "basicmaths.h"
 
 #define MAXDOWN 31
+#define RETRIG_LENGTH 16
 
 #ifdef OWL_SIMULATOR
 #error "This requires MIDI and can't run in the simulator"
@@ -23,12 +24,12 @@ private:
   uint8_t downCount;         // Number of items in midiDown
   uint8_t lastMidi;          // Midi note currently being output
   bool isDown;               // Is GATE high?
-  bool needRetrig;           // Do we need to feather the gate next frame?
+  uint8_t needRetrig;           // Do we need to feather the gate next frame?
 public:
   Midi2CVPatch(){        
     downCount = 0;
     lastMidi = MIDDLEC_MIDI;
-    isDown = needRetrig = false;
+    needRetrig = isDown = false;
   }
 
   ~Midi2CVPatch(){
@@ -51,10 +52,11 @@ public:
           auto midiNote = msg.getNote();
 
           // Check if this note is already somewhere in the midiDown stack.
-          uint8_t matchAt;
+          uint8_t matchAt, matchValue;
           bool match = false;
           for(int c = 0; c < downCount; c++) {
-            if (midiDown[c] == midiNote) {
+            matchValue = midiDown[c];
+            if (matchValue == midiNote) {
               match = true;
               matchAt = c;
               break;
@@ -80,14 +82,14 @@ public:
               midiDown[downCount] = midiNote; // Append to stack
               downCount++;
               if (isDown) // Retrig only if we were down before this
-                needRetrig = true;
+                needRetrig = RETRIG_LENGTH;
               isDown = true; // Set gate out
               break;
             case MidiCodeNoteOff: // On key up
               // Set retrig regardless; if isDown is set false it will be removed,
               // But if somehow we receive a down and up at once we'll want that retrig.
-              // HEY WAIT THIS IS WRONG. This will retrig when you keyup a misc note. FIXME
-              needRetrig = true;
+              if (matchValue == lastMidi) // Force retrigger if note we let go of was note playing
+                needRetrig = RETRIG_LENGTH;
               if (downCount > 0) {
                 lastMidi = midiDown[downCount-1]; // The new top of the stack becomes the new note.
               } else {
@@ -115,11 +117,12 @@ public:
 
     // Write samples
     float temp = isDown ? 1.0f : 0.0f;
-    for(int c = 0; c < size; c++)
-      leftData[c] = temp;
-    if (needRetrig) {
-      leftData[0] = 0.0f; // Set one sample 0 to retrigger
-      needRetrig = false;
+    {
+      int c = 0;
+      for(; needRetrig && c < size; c++, needRetrig--) // First write needRetrig 0s
+        leftData[c] = 0.0f;
+      for(; c < size; c++) // Then if down write 1s
+        leftData[c] = temp;
     }
 
     temp = (lastMidi - 33) / (12.0f * 5.0f); // We can output notes A1 to G#6
