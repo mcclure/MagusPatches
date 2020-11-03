@@ -4,7 +4,33 @@ Build instructions in [run.txt](run.txt). Or you can paste the .hpp files into [
 
 Licenses are included in their individual files but are mostly CC0/public domain. If you redistribute these programs as source code, it would be *polite* to retain the attribution even though (for the CC0 files) you are not legally required to do so.
 
-# MagusSim
+# Patches
+
+## Midi2CV
+
+This converts incoming MIDI to CV/Gate. If you hold multiple keys it will nicely play only the last one and retrigger when keys are lifted.
+
+The Gate is on the left audio output and the CV is on the right audio output. You must turn volume up to 100% or this will not work right.
+
+Also on RebelTech [here](https://www.rebeltech.org/patch-library/patch/Midi2CV).
+
+## Saw4
+
+This is a 4-oscillator synth voice with independent detune on each voice. Set the voices at slightly different microtone detunes and turn up "overdrive" for nice growls. Also on RebelTech [here](https://www.rebeltech.org/patch-library/patch/AndiSaw4).
+
+## Silence
+
+Does nothing at all. I load this as my "patch 1" so that when the device first boots up, the CPU load and power draw are as low as possible. Also on RebelTech [here](https://www.rebeltech.org/patch-library/patch/Silence).
+
+# Development helpers
+
+## Test patches
+
+### ScreenSaver
+
+I wrote this patch to test the screen. It just draws random numbers in random positions.
+
+## MagusSim
 
 `MagusSim/MakeMagusSim.py` is a script which will take any OWL Patch.hpp file and convert it into a standalone program. The standalone program will (by default) run for one second and print the PCM output to stdout, but there is an option to print human-readable floats.
 
