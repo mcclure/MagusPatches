@@ -137,22 +137,23 @@ public:
   }
   void processScreen(ScreenBuffer& screen){ // Print notes-down stack
 //debugMessage("Note count", downCount);
-    bool first = true; // Print newest to oldest and invert the "current" note
+    bool first = true;
     int height = screen.getHeight();
     screen.setTextColour(BLACK, WHITE);
     screen.clear();
     screen.print(0,8,""); // FIXME magic number?
     if (downCount > 0) {
-      screen.setTextColour(BLACK, WHITE);
-      for(int c = downCount-1; c >= 0; c--) {
-        if (!first)
+      screen.setTextColour(WHITE, BLACK);
+      for(int c = 0; c < downCount; c++) {
+        if (!first) { // Print space between values
           screen.print(" ");
-        uint8_t note = midiDown[c];
-        printNote(screen, note);
-        if (first) {
-          screen.setTextColour(WHITE, BLACK);
+        } else {
           first = false;
         }
+        if (c == downCount-1) // Highlight the currently selected note by inverting it
+          screen.setTextColour(BLACK, WHITE);
+        uint8_t note = midiDown[c];
+        printNote(screen, note);
       }
     } else { // No notes held down, print last note noninverted
       screen.setTextColour(WHITE, BLACK);
