@@ -1,12 +1,15 @@
 #ifndef __Midi2CV_hpp__
 #define __Midi2CV_hpp__
 
-// Does nothing. Prints numbers to the screen. To test drawing.
+// Midi input is converted to a CV/gate outputs. The notes currently down are displayed.
 // Author Andi McClure. License https://creativecommons.org/publicdomain/zero/1.0/
+// If you reuse this code preserving credit is appreciated but not legally required.
 
 #include "OpenWareMidiControl.h"
 #include "support/noteNames.h"
 #include "support/midi.h"
+#include "VoltsPerOctave.h"
+#include "basicmaths.h"
 
 #define MAXDOWN 31
 
@@ -21,29 +24,26 @@ private:
   uint8_t lastMidi;          // Midi note currently being output
   bool isDown;               // Is GATE high?
   bool needRetrig;           // Do we need to feather the gate next frame?
-  //int debugLastStatus;
 public:
   Midi2CVPatch(){        
     downCount = 0;
     lastMidi = MIDDLEC_MIDI;
     isDown = needRetrig = false;
-
-    //debugLastStatus = 31337;
   }
 
   ~Midi2CVPatch(){
   }
 
-  char digitChar(uint8_t note) {
+  char digitChar(uint8_t note) { // Get octave number of MIDI note
     uint8_t octave = note / 12;
-    if (note == 0)
-      return '-';
+    if (octave == 0)
+      return '-'; // For -1
     return '0' - 1 + octave;
   }
 
-  void processMidi(MidiMessage msg){
+  void processMidi(MidiMessage msg) { // Service MIDI note stack
       auto status = msg.getStatus();
-//debugLastStatus = status;
+
       switch (status) {
         // Key on
         case MidiCodeNoteOn:
@@ -68,7 +68,7 @@ public:
             downCount--;
           }
 
-          switch (status) {
+          switch (status) { // NoteOn and NoteOff implementations branch here
             case MidiCodeNoteOn: // On key down
               lastMidi = midiNote; // Set CV out
               if (downCount == MAXDOWN) { // We overflowed the stack. Forget the oldest note
@@ -101,10 +101,10 @@ public:
 
   }
 
-  void buttonChanged(PatchButtonId bid, uint16_t value, uint16_t samples){
+  void buttonChanged(PatchButtonId bid, uint16_t value, uint16_t samples) {
   }
 
-  void processAudio(AudioBuffer& buffer){
+  void processAudio(AudioBuffer& buffer) { // Create CV/Gate from notes down
     FloatArray left = buffer.getSamples(LEFT_CHANNEL);
     FloatArray right = buffer.getSamples(RIGHT_CHANNEL);
 
@@ -113,22 +113,32 @@ public:
     float *leftData = left.getData();
     float *rightData = right.getData();
 
-    // Write sample
-    memset(leftData,  0, size*sizeof(float));
-    memset(rightData, 0, size*sizeof(float));
-  }
+    // Write samples
+    float temp = isDown ? 1.0f : 0.0f;
+    for(int c = 0; c < size; c++)
+      leftData[c] = temp;
+    if (needRetrig) {
+      leftData[0] = 0.0f; // Set one sample 0 to retrigger
+      needRetrig = false;
+    }
+
+    temp = (lastMidi - 33) / (12.0f * 5.0f); // We can output notes A1 to G#6
+    for(int c = 0; c < size; c++)
+      rightData[c] = temp;
+}
 
 #ifdef USE_SCREEN
   void printNote(ScreenBuffer& screen, uint8_t note) {
-    screen.write(digitChar(note));
     screen.print(noteNames[note%12]);
+    screen.write(digitChar(note));
   }
-  void processScreen(ScreenBuffer& screen){
-    debugMessage("Note count", downCount);
-//debugMessage("last status", debugLastStatus);
+  void processScreen(ScreenBuffer& screen){ // Print notes-down stack
+//debugMessage("Note count", downCount);
     bool first = true; // Print newest to oldest and invert the "current" note
+    int height = screen.getHeight();
+    screen.setTextColour(BLACK, WHITE);
     screen.clear();
-    screen.print(0,0,"");
+    screen.print(0,8,""); // FIXME magic number?
     if (downCount > 0) {
       screen.setTextColour(BLACK, WHITE);
       for(int c = downCount-1; c >= 0; c--) {
@@ -141,7 +151,7 @@ public:
           first = false;
         }
       }
-    } else {
+    } else { // No notes held down, print last note noninverted
       screen.setTextColour(WHITE, BLACK);
       printNote(screen, lastMidi);
     }
@@ -150,4 +160,4 @@ public:
 
 };
 
-#endif   // __Saw4Patch_hpp__
+#endif   // __Midi2CV_hpp__
