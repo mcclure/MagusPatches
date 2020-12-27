@@ -8,15 +8,10 @@
 #include "OpenWareMidiControl.h"
 #include "support/noteNames.h"
 #include "support/midi.h"
-#include "VoltsPerOctave.h"
 #include "basicmaths.h"
 
 #define MIDI_MAXDOWN 31
 #define MIDI_RETRIG_LENGTH 16
-
-#if defined(OWL_SIMULATOR) && !defined(OWL_SIMULATOR_OK)
-#error "This requires MIDI and can't run in the simulator"
-#endif
 
 class MidiPatchBase : public Patch {
 protected:
@@ -42,10 +37,10 @@ public:
     return '0' - 1 + octave;
   }
 
-  void startNote(int at) {
+  virtual void startNote(int at, uint8_t midiNote) {
   }
 
-  void killNote(int at) {
+  virtual void killNote(int at) {
   }
 
   void processMidi(MidiMessage msg) { // Service MIDI note stack
@@ -71,7 +66,7 @@ public:
 
           // Matched. Either key lifted or there's a double down. Either way pull it from the stack
           if (match) {
-            killNote(at);
+            killNote(matchAt);
             for(int c = matchAt; c<(int)downCount-1; c++)
               midiDown[c] = midiDown[c+1];
             downCount--;
@@ -88,7 +83,7 @@ public:
               }
               midiDown[downCount] = midiNote; // Append to stack
               downCount++;
-              startNote(downCount-1);
+              startNote(downCount-1, midiNote);
               if (isDown) // Retrig only if we were down before this
                 needRetrig = MIDI_RETRIG_LENGTH;
               isDown = true; // Set gate out

@@ -8,7 +8,6 @@
 #include "OpenWareMidiControl.h"
 #include "support/midiPatchBase.hpp"
 #include "support/midi.h"
-#include "VoltsPerOctave.h"
 #include "basicmaths.h"
 
 class Midi2CVPatch : public MidiPatchBase {

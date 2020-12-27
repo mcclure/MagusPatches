@@ -15,3 +15,7 @@ make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=Magus
 # To test (from PatchSource directory)
 
 (cd .. && make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=Magus && ../FirmwareSender/Builds/MacOSX/build/Debug/FirmwareSender -in Build/patch.bin -out OWL-MIDI -run)
+
+# Run simulator example (from PatchSource directory)
+
+./MagusSim/MakeMagusSim.py MidiSquarePatch.hpp -i support:support/midiPatchBase.hpp -i support:support/noteNames.h -i support:support/midi.h -i MagusSim/fakes/basicmaths.h -n 69 -n 22000:72 && (./MidiSquarePatch > out.raw)

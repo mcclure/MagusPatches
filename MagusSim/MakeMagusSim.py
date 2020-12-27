@@ -24,13 +24,37 @@ def innerName(s):
     chopped = chopdot.search(s)
     return chopped and chopped.group(0) or s
 
+# Convert dest:inpath to [dest, inpath] or [None, inpath]
+splitColon = re.compile(r'^([^\:]*)\:(.+)')
+def includeSplit(path):
+  match = splitColon.match(path)
+  if match:
+    d = match.group(1)
+    f = match.group(2)
+  else:
+    d = None
+    f = path
+  return [d, os.path.abspath(f)]
+
+# Given [dest, inpath] and a build dir, create dir path and return dest, inpath
+def prepUnpackPair(pair, buildDir):
+  d, filename = pair
+  if d:
+    d = os.path.join(buildDir, d)
+    if not os.path.exists(d):
+      os.makedirs(d)
+  else:
+    d = buildDir
+  return d, filename
+
 @click.command(help="Processes an hpp file into a standalone executable simulating running on the Magus")
 @click.argument('infile')
-@click.option('--class', '-c', '_class', type=click.STRING, help="Name of main class")
-@click.option('--output', '-o', type=click.STRING, help="Output file")
-@click.option('--include', '-i', multiple=True, type=click.STRING, help="Copy this file into build directory")
+@click.option('--class', '-c', '_class', type=click.STRING, help="Name of main class (if different from infile name)")
+@click.option('--output', '-o', type=click.STRING, help="Output file        (if different from infile name)")
+@click.option('--include', '-i', multiple=True, type=click.STRING, help="Copy this file into build directory (Note: If a destination directory is needed, prefix with :\nEG --include \"support:support/file.h\"")
+@click.option('--note', '-n', multiple=True, type=click.STRING, help="Play MIDI note into program. Syntax 69 for note 69 on at start, 100:69 or 100:69:1 for note 69 on at sample 100, or 200:69:0 for note 69 off at sample 200.")
 @click.option('--cxx', envvar='CXX', default="c++", type=click.STRING, help="(Or env var CXX) C++ compiler to use")
-def make(infile, _class, cxx, output, include):
+def make(infile, _class, cxx, output, include, note):
     # Clean up arguments, make all paths absolute except infile
     defaultName = innerName(infile)
     if not defaultName:
@@ -39,7 +63,7 @@ def make(infile, _class, cxx, output, include):
         _class = defaultName
     if not output:
         output = os.path.abspath(defaultName)
-    include = [os.path.abspath(x) for x in ([infile] + list(include))]
+    include = [includeSplit(x) for x in ([infile] + list(include))]
     infile = os.path.basename(infile)
     sampleRate = 44100
     # print(infile, _class, cxx, output, include) # Debug
@@ -49,8 +73,23 @@ def make(infile, _class, cxx, output, include):
     buildDir = tempfile.mkdtemp()
     print("Building in directory "+buildDir)
     os.chdir(buildDir)
-    for filename in include:
-        shutil.copy(filename, buildDir)
+    for pair in include:
+      d, filename = prepUnpackPair(pair, buildDir)
+      shutil.copy(filename, d)
+
+    notes = []
+    if note:
+      for _n in note:
+        n = _n.split(":")
+        if len(n) == 1:
+          at,n,on = 0,int(_n),True
+        elif len(n) == 2:
+          at,n,on = int(n[0]),int(n[1]),True
+        elif len(n) == 3:
+          at,n,on = int(n[0]),int(n[1]),int(n[2])
+        else:
+          raise click.ClickException("Don't understand "+_n)
+        notes.append([at, [on and 9 or 8, on and 0x90 or 0x80, n & 0x7F, on and 0x7F or 0]])
 
     # Create include file
     with open("__SIM_INCLUDE.h", "w") as f:
@@ -181,7 +220,174 @@ struct AudioBuffer {{
     }}
 }};
 
+// Copied from OwlProgram repo, git:2918c483c53c, MidiStatus.h
+
+enum MidiStatus {{
+  STATUS_BYTE     = 0x80,
+  NOTE_OFF      = 0x80,
+  NOTE_ON     = 0x90,
+  POLY_KEY_PRESSURE   = 0xA0,
+  CONTROL_CHANGE    = 0xB0,
+  PROGRAM_CHANGE    = 0xC0,
+  CHANNEL_PRESSURE    = 0xD0,
+  PITCH_BEND_CHANGE   = 0xE0,
+  SYSTEM_COMMON     = 0xF0,
+  SYSEX       = 0xF0,
+  TIME_CODE_QUARTER_FRAME       = 0xF1,
+  SONG_POSITION_PTR             = 0xF2,
+  SONG_SELECT                   = 0xF3,
+  RESERVED_F4                   = 0xF4,
+  RESERVED_F5                   = 0xF5,
+  TUNE_REQUEST                  = 0xF6,
+  SYSEX_EOX                     = 0xF7,   
+  SYSTEM_REAL_TIME    = 0xF8,
+  TIMING_CLOCK            = 0xF8,
+  RESERVED_F9                   = 0xF9,
+  START                         = 0xFA,
+  CONTINUE                      = 0xFB,
+  STOP                          = 0xFC,
+  RESERVED_FD                   = 0xFD,
+  ACTIVE_SENSING                = 0xFE,
+  SYSTEM_RESET                  = 0xFF,
+  MIDI_CHANNEL_MASK   = 0x0F,
+  MIDI_STATUS_MASK    = 0xF0
+}};
+
+enum MidiControlChange {{
+  MIDI_CC_MODULATION    = 0x01,
+  MIDI_CC_BREATH        = 0x02,
+  MIDI_CC_VOLUME        = 0x07,
+  MIDI_CC_BALANCE       = 0x08,
+  MIDI_CC_PAN           = 0x0a,
+  MIDI_CC_EXPRESSION    = 0x0b,
+  MIDI_CC_EFFECT_CTRL_1 = 0x0c,
+  MIDI_CC_EFFECT_CTRL_2 = 0x0d,
+  MIDI_ALL_SOUND_OFF    = 0x78,
+  MIDI_RESET_ALL_CTRLS  = 0x79,
+  MIDI_LOCAL_CONTROL    = 0x7a,
+  MIDI_ALL_NOTES_OFF    = 0x7b,
+  MIDI_OMNI_MODE_OFF    = 0x7c,
+  MIDI_OMNI_MODE_ON     = 0x7d,
+  MIDI_MONO_MODE_ON     = 0x7e,
+  MIDI_POLY_MODE_ON     = 0x7f
+}};
+
+enum UsbMidi {{
+  USB_COMMAND_MISC                = 0x00, /* reserved */
+  USB_COMMAND_CABLE_EVENT         = 0x01, /* reserved */
+  USB_COMMAND_2BYTE_SYSTEM_COMMON = 0x02, /* e.g. MTC, SongSelect */
+  USB_COMMAND_3BYTE_SYSTEM_COMMON = 0x03, /* e.g. Song Position Pointer SPP */
+  USB_COMMAND_SYSEX               = 0x04,
+  USB_COMMAND_SYSEX_EOX1          = 0x05,
+  USB_COMMAND_SYSEX_EOX2          = 0x06,
+  USB_COMMAND_SYSEX_EOX3          = 0x07,
+  USB_COMMAND_NOTE_OFF            = 0x08,
+  USB_COMMAND_NOTE_ON             = 0x09,
+  USB_COMMAND_POLY_KEY_PRESSURE   = 0x0A,
+  USB_COMMAND_CONTROL_CHANGE    = 0x0B,
+  USB_COMMAND_PROGRAM_CHANGE    = 0x0C,
+  USB_COMMAND_CHANNEL_PRESSURE    = 0x0D,
+  USB_COMMAND_PITCH_BEND_CHANGE   = 0x0E,
+  USB_COMMAND_SINGLE_BYTE   = 0x0F
+}};
+
+enum OwlProtocol {{
+  OWL_COMMAND_DISCOVER            = 0xa0,
+  OWL_COMMAND_PARAMETER           = 0xb0,
+  OWL_COMMAND_COMMAND             = 0xc0,
+  OWL_COMMAND_MESSAGE             = 0xd0,
+  OWL_COMMAND_DATA                = 0xe0,
+  OWL_COMMAND_RESET               = 0xf0,
+}};
+
+// Copied from OwlProgram repo, git:2918c483c53c, MidiMessage.h
+
+class MidiMessage {{
+ public:
+  union {{
+    uint32_t packed;
+    uint8_t data[4];
+  }};
+  MidiMessage():packed(0){{}}
+  MidiMessage(uint32_t msg): packed(msg){{}}
+  MidiMessage(uint8_t port, uint8_t d0, uint8_t d1, uint8_t d2){{
+    data[0] = port;
+    data[1] = d0;
+    data[2] = d1;
+    data[3] = d2;
+  }}
+  uint8_t getPort(){{
+    return (data[0] & 0xf0)>>4;
+  }}
+  uint8_t getChannel(){{
+    return (data[1] & MIDI_CHANNEL_MASK);
+  }}
+  uint8_t getStatus(){{
+    return (data[1] & MIDI_STATUS_MASK);
+  }}
+  uint8_t getNote(){{
+    return data[2];
+  }}
+  uint8_t getVelocity(){{
+    return data[3];
+  }}
+  uint8_t getControllerNumber(){{
+    return data[2];
+  }}
+  uint8_t getControllerValue(){{
+    return data[3];
+  }}
+  uint8_t getChannelPressure(){{
+    return data[2];
+  }}
+  uint8_t getProgramChange(){{
+    return data[1];
+  }}
+  int16_t getPitchBend(){{
+    int16_t pb = (data[2] | (data[3]<<7)) - 8192;
+    return pb;
+  }}
+  bool isNoteOn(){{
+    return ((data[1] & MIDI_STATUS_MASK) == NOTE_ON) && getVelocity() != 0;
+  }}
+  bool isNoteOff(){{
+    return ((data[1] & MIDI_STATUS_MASK) == NOTE_OFF) || (((data[1] & MIDI_STATUS_MASK) == NOTE_ON) && getVelocity() == 0);
+  }}
+  bool isControlChange(){{
+    return (data[1] & MIDI_STATUS_MASK) == CONTROL_CHANGE;
+  }}
+  bool isProgramChange(){{
+    return (data[1] & MIDI_STATUS_MASK) == PROGRAM_CHANGE;
+  }}
+  bool isChannelPressure(){{
+    return (data[1] & MIDI_STATUS_MASK) == CHANNEL_PRESSURE;
+  }}
+  bool isPitchBend(){{
+    return (data[1] & MIDI_STATUS_MASK) == PITCH_BEND_CHANGE;
+  }}
+  static MidiMessage cc(uint8_t ch, uint8_t cc, uint8_t value){{
+    return MidiMessage(USB_COMMAND_CONTROL_CHANGE, CONTROL_CHANGE|(ch&0xf), cc&0x7f, value&0x7f);
+  }}
+  static MidiMessage pc(uint8_t ch, uint8_t pc){{
+    return MidiMessage(USB_COMMAND_PROGRAM_CHANGE, PROGRAM_CHANGE|(ch&0xf), pc&0x7f, 0);
+  }}
+  static MidiMessage pb(uint8_t ch, int16_t bend){{
+    bend += 8192;
+    return MidiMessage(USB_COMMAND_PITCH_BEND_CHANGE, PITCH_BEND_CHANGE|(ch&0xf), bend&0x7f, (bend>>7)&0x7f);
+  }}
+  static MidiMessage note(uint8_t ch, uint8_t note, uint8_t velocity){{
+    if(velocity == 0)
+      return MidiMessage(USB_COMMAND_NOTE_OFF, NOTE_OFF|(ch&0xf), note&0x7f, velocity&0x7f);
+    else
+      return MidiMessage(USB_COMMAND_NOTE_ON, NOTE_ON|(ch&0xf), note&0x7f, velocity&0x7f);
+  }}
+  static MidiMessage cp(uint8_t ch, uint8_t value){{
+    return MidiMessage(USB_COMMAND_CHANNEL_PRESSURE, CHANNEL_PRESSURE|(ch&0xf), value&0x7f, 0);
+  }}
+}};
+
 #endif
+
 """.format(sampleRate=sampleRate))
 
     # Create include file forwards
@@ -220,6 +426,12 @@ void bailError(const std::string &name, const std::string &err) {{
 
 #include "{infile}"
 
+#define NOTECOUNT {noteLen}
+
+int noteAt[NOTECOUNT] = {{{noteAt}}};
+MidiMessage notes[NOTECOUNT] = {{{noteContent}}};
+int processingNote = 0;
+
 int main(int argc, char **argv) {{
     int samples = {sampleRate};
     bool human = false;
@@ -251,6 +463,11 @@ int main(int argc, char **argv) {{
         buffer._right._size = currentFrameSize;
         buffer._clear();
 
+        if (processingNote < NOTECOUNT && noteAt[processingNote] <= off) {{
+          generator.processMidi(notes[processingNote]);
+          processingNote++;
+        }}
+
         generator.processAudio(buffer);
 
         if (human) {{
@@ -269,10 +486,23 @@ int main(int argc, char **argv) {{
 
     return 0;
 }}
-""".format(infile=infile, _class=_class, sampleRate=sampleRate))
+""".format(infile=infile, _class=_class, sampleRate=sampleRate, noteLen=len(notes),
+  noteAt=", ".join([str(n[0]) for n in notes]),
+  noteContent=", ".join(
+      [
+        (
+          "MidiMessage(" +
+          ", ".join(
+            [hex(b) for b in n[1]]
+          )
+          + ")"
+        ) for n in notes
+      ]
+    )
+  ))
 
     # Compile
-    result = subprocess.call([cxx, "__driver.cpp", "-o", output])
+    result = subprocess.call([cxx, "__driver.cpp", "-I.", "-o", output])
 
     sys.exit(result)
 
