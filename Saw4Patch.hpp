@@ -6,6 +6,7 @@
 
 #include "OpenWareMidiControl.h"
 #include "math.h"
+#include "support/patchForSlot.h"
 //#include "VoltsPerOctave.h"
 
 class Saw4Patch : public Patch {
@@ -21,11 +22,6 @@ private:
 
   double phase[4];
 
-  // Parameters are passed out (TOP ROW THEN BOTTOM ROW) horizontally
-  // But we want them to be passed out in 2x2 blocks of 4, left to right
-  PatchParameterId patchForSlot(int i) {
-    return PatchParameterId((i & 1) | ( (i & 2) << 2 ) | ( (i & 12) >> 1 ));
-  }
 public:
   // Add a block of 4 parameters for a single oscillator
   void add4Params(PatchParameterId base, const char *name, int id) {

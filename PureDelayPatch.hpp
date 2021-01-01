@@ -7,6 +7,7 @@
 #include "OpenWareMidiControl.h"
 #include "math.h"
 #include "support/midi.h"
+#include "support/patchForSlot.h"
 //#include "VoltsPerOctave.h"
 
 #define BUFSIZE (44100*2+1)
@@ -26,11 +27,6 @@ private:
   float history[BUFSIZE];
   int writePtr;
 
-  // Parameters are passed out (TOP ROW THEN BOTTOM ROW) horizontally
-  // But we want them to be passed out in 2x2 blocks of 4, left to right
-  PatchParameterId patchForSlot(int i) {
-    return PatchParameterId((i & 1) | ( (i & 2) << 2 ) | ( (i & 12) >> 1 ));
-  }
 public:
   PureDelayPatch() {
     midinote = MIDDLEC_MIDI;
