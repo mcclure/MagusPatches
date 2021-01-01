@@ -61,7 +61,7 @@ public:
     for(int c = 0; c < downCount; c++) {
       PackedPhase &phase = midiPhase[c];
       for(int d = 0; d < size; d++) {
-        leftData[d] += phase.high ? 1.0f : -1.0f;
+        rightData[d] += phase.high ? 1.0f : -1.0f;
         phase.phase += PHASE_RADIX;
         if (phase.phase > phase.max) {
           phase.phase -= phase.max;
@@ -69,9 +69,24 @@ public:
         }
       }
     }
+#if PATCH_STEREO
     for(int d = 0; d < size; d++) {
-      rightData[d] = leftData[d] = CLAMP(leftData[d]*amp);
+      leftData[d] = rightData[d] = CLAMP(leftData[d]*amp);
     }
+#else
+    for(int d = 0; d < size; d++) {
+      rightData[d] = CLAMP(rightData[d]*amp);
+    }
+    // Write samples
+    float temp = isDown ? 1.0f : 0.0f;
+    {
+      int c = 0;
+      for(; needRetrig && c < size; c++, needRetrig--) // First write needRetrig 0s
+        leftData[c] = 0.0f;
+      for(; c < size; c++) // Then if down write 1s
+        leftData[c] = temp;
+    }
+#endif
   }
 };
 
