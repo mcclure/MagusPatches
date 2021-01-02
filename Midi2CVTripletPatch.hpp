@@ -13,6 +13,8 @@
 
 #define MIDI_OUTS 3
 #define PARAM_BASE 0
+// If true, copy last value to audio out
+#define AUDIO_OUT 1
 
 // Midi2CV but uses 3 bottom-area outlets. For the Chainsaw
 class Midi2CVTripletPatch : public MidiPatchBase {
@@ -83,22 +85,24 @@ public:
     float *leftData = left.getData();
     float *rightData = right.getData();
 
-    memset(leftData, 0, size*sizeof(float));
-    memset(rightData, 0, size*sizeof(float));
-
     int assign = lastMidi;
+    int lastFoundAssign = -1;
+    float lastValue;
+    bool trig;
 
     PatchParameterId param = patchForSlot(PARAM_BASE);
     if (downCount) {
       if (needRetrig > 0) {
         needRetrig = needRetrig < size ? 0 : needRetrig - size;
-        setParameterValue(param, 0.0f);
+        trig = false;
       } else {
-        setParameterValue(param, 1.0f);
+        trig = true;
       }
     } else {
-      setParameterValue(param, 0.0f);
+      trig = false;
     }
+
+    setParameterValue(param, trig ? 1.0f : 0.0f);
 
     for(int c = 0; c < MIDI_OUTS; c++) {
       for(int d = 0; d < downCount; d++) {
@@ -107,13 +111,27 @@ public:
           break;
         }
       }
+      if (assign != lastFoundAssign) {
+        lastFoundAssign = assign;
+        lastValue = (assign - 33) / (12.0f * 5.0f); // We can output notes A1 to G#6
+      }
       param = patchForSlot(PARAM_BASE + 1 + c);
-      float value = (assign - 33) / (12.0f * 5.0f); // We can output notes A1 to G#6
-      setParameterValue(param, value);
+      setParameterValue(param, lastValue /2.0f);
     }
+
+#if AUDIO_OUT
+    float trigValue = trig ? 1.0f : 0.0f;
+    for(int c = 0; c < size; c++) {
+      leftData[c] = trigValue;
+      rightData[c] = lastValue;
+    }
+#else
+    memset(leftData, 0, size*sizeof(float));
+    memset(rightData, 0, size*sizeof(float));
+#endif
   }
 
-  #ifdef USE_SCREEN
+#ifdef USE_SCREEN
   // NOTE: This is a cutpaste of midiBasePatch implementation, I don't like that, it could be abstracted in principle
   void processScreen(ScreenBuffer& screen){ // Print notes-down stack
 //debugMessage("Note count", downCount);
@@ -140,6 +158,12 @@ public:
       screen.setTextColour(WHITE, BLACK);
       printNote(screen, lastMidi);
     }
+
+#if AUDIO_OUT
+#else
+    memset(leftData, 0, size*sizeof(float));
+    memset(rightData, 0, size*sizeof(float));
+#endif
   }
 #endif
 
