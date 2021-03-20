@@ -16,10 +16,16 @@
 // If true, copy last value to audio out
 #define AUDIO_OUT 1
 
+struct PackedHistory {
+  unsigned int present:1;
+  unsigned int priority:2; // Enough for 3+1
+  unsigned int lastMidi:8;
+};
+
 // Midi2CV but uses 3 bottom-area outlets. For the Chainsaw
 class Midi2CVTripletPatch : public MidiPatchBase {
 public:
-  int midiAssign[MIDI_MAXDOWN]; // Stack of notes down
+  PackedHistory outHistory[AUDIO_OUT]; // Stack of notes down
 
   Midi2CVTripletPatch() : MidiPatchBase() {
     char scratch[16];
@@ -34,6 +40,9 @@ public:
       strncpy(scratch, "CV", 16); scratch[2] = '0' + c; scratch[3] = '>'; scratch[4] = '\0';
       registerParameter(param, scratch);
       setParameterValue(param, 0.5);
+
+      outHistory[c].present = false;
+      outHistory[c].lastMidi = lastMidi;
     }
   }
 
@@ -41,37 +50,54 @@ public:
   }
 
   void startNote(int at, uint8_t midiNote) {
-    int safe = -1;
-    for(int check = 0; safe < 0 && check < MIDI_OUTS;) { // Iterate over possible values
-      safe = check;
-      for(int c = 0; c < at; c++) { // For each existing note, check if it's already in the array
-        if (midiAssign[c] == check) {
-          safe = -1;
-          check++;
-          break;
+    bool allPresent = true;
+
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over output ports
+      PackedHistory &out = outHistory[o];
+      if (out.present) {
+        out.priority++;
+      } else {
+        out.present = true;
+        out.priority = 0;
+        out.lastMidi = midiNote;
+        allPresent = false;
+      }
+    }
+
+    if (allPresent) { // Must kill note
+      int highestPrio = 0;
+      int highestPrioCount = 0;
+      for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+        PackedHistory &out = outHistory[o];
+        if (out.priority > highestPrio) {
+          highestPrio = out.priority;
+          highestPrioCount = 1;
+        } else if (out.priority == highestPrio) {
+          highestPrioCount++;
+        }
+      }
+
+      for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+        PackedHistory &out = outHistory[o];
+        if (out.priority == highestPrio) {
+          if (highestPrioCount > 1) { // If highest priority is multiple keys, don't overwrite all
+            highestPrioCount = 0;
+          } else { // Code duplication :/
+            out.present = true;
+            out.priority = 0;
+            out.lastMidi = midiNote;
+          }
         }
       }
     }
-    if (safe < 0) { // Didn't find anything. Steal a note.
-      for(int c = 0; c < at; c++) {
-        if (midiAssign[c] >= 0) {
-          safe = midiAssign[c];
-          midiAssign[c] = -1;
-          break;
-        }
-      }
-    }
-    midiAssign[at] = safe;
   }
 
   void killNote(int at) {
-    int reassign = midiAssign[at];
-    for(int c = at; c<(int)downCount-1; c++)
-      midiAssign[c] = midiAssign[c+1];
-    for(int c = at; c>= 0; c--) {
-      if (midiAssign[c] == -1) {
-        midiAssign[c] = reassign;
-        break;
+    uint8_t killed = midiDown[at];
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+      PackedHistory &out = outHistory[o];
+      if (out.present && out.lastMidi == killed) {
+        out.present = false;
       }
     }
   }
@@ -104,18 +130,14 @@ public:
 
     setParameterValue(param, trig ? 1.0f : 0.0f);
 
-    for(int c = 0; c < MIDI_OUTS; c++) {
-      for(int d = 0; d < downCount; d++) {
-        if (midiAssign[d] == c) {
-          assign = midiDown[d];
-          break;
-        }
-      }
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+      PackedHistory &out = outHistory[o];
+      assign = out.lastMidi;
       if (assign != lastFoundAssign) {
         lastFoundAssign = assign;
         lastValue = (assign - 33) / (12.0f * 5.0f); // We can output notes A1 to G#6
       }
-      param = patchForSlot(PARAM_BASE + 1 + c);
+      param = patchForSlot(PARAM_BASE + 1 + o);
       setParameterValue(param, lastValue /2.0f);
     }
 
@@ -147,23 +169,25 @@ public:
         } else {
           first = false;
         }
-        if (midiAssign[c] >= 0) // Highlight all currently selected notes by inverting
+        bool highlighted = false;
+        uint8_t note = midiDown[c];
+        for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+          PackedHistory &out = outHistory[o];
+          if (out.present && out.lastMidi == note) {
+            highlighted = true;
+            break;
+          }
+        }
+        if (highlighted) // Highlight all currently selected notes by inverting
           screen.setTextColour(BLACK, WHITE);
         else
           screen.setTextColour(WHITE, BLACK);
-        uint8_t note = midiDown[c];
         printNote(screen, note);
       }
     } else { // No notes held down, print last note noninverted
       screen.setTextColour(WHITE, BLACK);
       printNote(screen, lastMidi);
     }
-
-#if AUDIO_OUT
-#else
-    memset(leftData, 0, size*sizeof(float));
-    memset(rightData, 0, size*sizeof(float));
-#endif
   }
 #endif
 

@@ -34,6 +34,9 @@ public:
     memset(leftData,  0, size*sizeof(float));
     memset(rightData, 0, size*sizeof(float));
   }
+
+  void processScreen(ScreenBuffer& screen){
+  }
 };
 
 #endif   // __Saw4Patch_hpp__
