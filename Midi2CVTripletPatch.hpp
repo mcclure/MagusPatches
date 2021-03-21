@@ -18,14 +18,15 @@
 
 struct PackedHistory {
   unsigned int present:1;
-  unsigned int priority:2; // Enough for 3+1
+  unsigned int seniority:2; // Enough for 3+1
   unsigned int lastMidi:8;
 };
 
 // Midi2CV but uses 3 bottom-area outlets. For the Chainsaw
 class Midi2CVTripletPatch : public MidiPatchBase {
 public:
-  PackedHistory outHistory[AUDIO_OUT]; // Stack of notes down
+  PackedHistory outHistory[MIDI_OUTS]; // Stack of notes down
+  int uniqueNotes;
 
   Midi2CVTripletPatch() : MidiPatchBase() {
     char scratch[16];
@@ -44,49 +45,84 @@ public:
       outHistory[c].present = false;
       outHistory[c].lastMidi = lastMidi;
     }
+
+    uniqueNotes = 0;
   }
 
   ~Midi2CVTripletPatch(){
   }
 
+  // Okay it turns out "natural feeling" note stealing logic is more complex than I thought
   void startNote(int at, uint8_t midiNote) {
     bool allPresent = true;
 
-    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over output ports
+    // First see if there's a free note (depressed then released)
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate outs
       PackedHistory &out = outHistory[o];
-      if (out.present) {
-        out.priority++;
-      } else {
-        out.present = true;
-        out.priority = 0;
-        out.lastMidi = midiNote;
-        allPresent = false;
+      if (!out.present) {
+        allPresent = false;              // Note free
       }
     }
 
-    if (allPresent) { // Must kill note
-      int highestPrio = 0;
-      int highestPrioCount = 0;
-      for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+    if (allPresent) { // Must steal note
+      int mostSenior = -1;
+      // First figure out the most senior seniority
+      for(int o = 0; o < MIDI_OUTS; o++) { // Iterate outs
         PackedHistory &out = outHistory[o];
-        if (out.priority > highestPrio) {
-          highestPrio = out.priority;
-          highestPrioCount = 1;
-        } else if (out.priority == highestPrio) {
-          highestPrioCount++;
+        if ((int)out.seniority > mostSenior) {
+          mostSenior = out.seniority;
         }
       }
 
-      for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+      uniqueNotes = (int)mostSenior+1;
+
+      // Figure out which seniority level to steal from
+      int targetSeniority = -1;
+      int targetSeniorityCount = -1;
+      for(int s = mostSenior; s >= 0; s--) { // Iterate seniorities
+        int seniorityCount = 0;
+        for(int o = 0; o < MIDI_OUTS; o++) { // Iterate outs
+          PackedHistory &out = outHistory[o];
+          if ((int)out.seniority == s) {
+            seniorityCount++;                // Count outs with this seniority
+          }
+        }
+        // Target a seniority for stealing if either it's the oldest seniority or it's using more than one note
+        if (seniorityCount > 1 || targetSeniority < 0) {
+          targetSeniority = s;
+          targetSeniorityCount = seniorityCount;
+          if (seniorityCount > 1) // Using more than one note is the strongest criterion
+            break;
+        }
+      }
+
+      // Replace oldest note
+      for(int o = 0; o < MIDI_OUTS; o++) { // Iterate outs
         PackedHistory &out = outHistory[o];
-        if (out.priority == highestPrio) {
-          if (highestPrioCount > 1) { // If highest priority is multiple keys, don't overwrite all
-            highestPrioCount = 0;
+        if ((int)out.seniority == targetSeniority) { // Found an output with the target seniority
+          if (targetSeniorityCount > 1) { // If there's more than one output with this note, don't replace first
+            out.seniority++;
+            targetSeniorityCount = 0;     // Don't take this branch next output
           } else { // Code duplication :/
             out.present = true;
-            out.priority = 0;
+            out.seniority = 0;
             out.lastMidi = midiNote;
           }
+        } else {
+          out.seniority++;
+        }
+      }
+    } else {
+      uniqueNotes++;
+      for(int o = 0; o < MIDI_OUTS; o++) {
+        PackedHistory &out = outHistory[o];
+        if (out.present) { // Note is held, keep it but make it more senior
+          out.seniority++;
+        } else {            // Note is not held, replace it
+          out.present = true;
+          out.seniority = 0;
+          out.lastMidi = midiNote;
+          allPresent = false;
         }
       }
     }
@@ -96,8 +132,12 @@ public:
     uint8_t killed = midiDown[at];
     for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
       PackedHistory &out = outHistory[o];
-      if (out.present && out.lastMidi == killed) {
-        out.present = false;
+      if (out.present) {
+        if (out.lastMidi == killed) {
+          out.present = false;
+        } else {
+          out.seniority--; // At end of this loop lowest seniority should be 0
+        }
       }
     }
   }
@@ -154,39 +194,34 @@ public:
   }
 
 #ifdef USE_SCREEN
-  // NOTE: This is a cutpaste of midiBasePatch implementation, I don't like that, it could be abstracted in principle
-  void processScreen(ScreenBuffer& screen){ // Print notes-down stack
+  void processScreen(ScreenBuffer& screen){ // Print notes-playing array
 //debugMessage("Note count", downCount);
     int height = screen.getHeight();
-    bool first = true;
     screen.clear();
-    screen.print(0,8,""); // FIXME magic number?
-    if (downCount > 0) {
-      for(int c = 0; c < downCount; c++) {
-        if (!first) { // Print space between values
-          screen.setTextColour(WHITE, BLACK);
-          screen.print(" ");
-        } else {
-          first = false;
-        }
-        bool highlighted = false;
-        uint8_t note = midiDown[c];
-        for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
-          PackedHistory &out = outHistory[o];
-          if (out.present && out.lastMidi == note) {
-            highlighted = true;
-            break;
-          }
-        }
-        if (highlighted) // Highlight all currently selected notes by inverting
-          screen.setTextColour(BLACK, WHITE);
-        else
-          screen.setTextColour(WHITE, BLACK);
-        printNote(screen, note);
+    screen.setTextColour(WHITE, BLACK);
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values      
+      PackedHistory &out = outHistory[o];
+
+      screen.print((o*3+3)*8,16,""); // FIXME magic number?
+      printNote(screen, out.lastMidi);
+    }
+
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+      screen.print((o*3+3)*8,32,""); // FIXME magic number?
+      PackedHistory &out = outHistory[o];
+      if (out.present) { // Highlight all currently keydowned notes by inverting
+        screen.setTextColour(BLACK, WHITE);
+        screen.print("   ");
       }
-    } else { // No notes held down, print last note noninverted
-      screen.setTextColour(WHITE, BLACK);
-      printNote(screen, lastMidi);
+    }
+
+    screen.setTextColour(WHITE, BLACK);
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate over possible values
+      PackedHistory &out = outHistory[o];
+      if (out.present) {
+        screen.print((o*3+3)*8,48,""); // FIXME magic number?
+        screen.write(digitChar(uniqueNotes - (int)out.seniority));
+      }
     }
   }
 #endif

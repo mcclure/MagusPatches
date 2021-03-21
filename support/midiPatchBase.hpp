@@ -30,11 +30,15 @@ public:
   ~MidiPatchBase(){
   }
 
-  char digitChar(uint8_t note) { // Get octave number of MIDI note
+  char digitChar(uint8_t v) { // Get octave number of MIDI note
+    return '0' + v;
+  }
+
+  char octaveChar(uint8_t note) { // Get octave number of MIDI note
     uint8_t octave = note / 12;
     if (octave == 0)
       return '-'; // For -1
-    return '0' - 1 + octave;
+    return digitChar(octave);
   }
 
   virtual void startNote(int at, uint8_t midiNote) {
@@ -112,7 +116,7 @@ public:
 #ifdef USE_SCREEN
   void printNote(ScreenBuffer& screen, uint8_t note) {
     screen.print(noteNames[note%12]);
-    screen.write(digitChar(note));
+    screen.write(octaveChar(note));
   }
   void processScreen(ScreenBuffer& screen){ // Print notes-down stack
 //debugMessage("Note count", downCount);
