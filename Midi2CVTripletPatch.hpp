@@ -26,7 +26,6 @@ struct PackedHistory {
 class Midi2CVTripletPatch : public MidiPatchBase {
 public:
   PackedHistory outHistory[MIDI_OUTS]; // Stack of notes down
-  int uniqueNotes;
 
   Midi2CVTripletPatch() : MidiPatchBase() {
     char scratch[16];
@@ -45,11 +44,20 @@ public:
       outHistory[c].present = false;
       outHistory[c].lastMidi = lastMidi;
     }
-
-    uniqueNotes = 0;
   }
 
   ~Midi2CVTripletPatch(){
+  }
+
+  int highestSeniority() {
+    int mostSenior = -1;
+    for(int o = 0; o < MIDI_OUTS; o++) { // Iterate outs
+      PackedHistory &out = outHistory[o];
+      if ((int)out.seniority > mostSenior) {
+        mostSenior = out.seniority;
+      }
+    }
+    return mostSenior;
   }
 
   // Okay it turns out "natural feeling" note stealing logic is more complex than I thought
@@ -65,16 +73,7 @@ public:
     }
 
     if (allPresent) { // Must steal note
-      int mostSenior = -1;
-      // First figure out the most senior seniority
-      for(int o = 0; o < MIDI_OUTS; o++) { // Iterate outs
-        PackedHistory &out = outHistory[o];
-        if ((int)out.seniority > mostSenior) {
-          mostSenior = out.seniority;
-        }
-      }
-
-      uniqueNotes = (int)mostSenior+1;
+      int mostSenior = highestSeniority();
 
       // Figure out which seniority level to steal from
       int targetSeniority = -1;
@@ -96,6 +95,8 @@ public:
         }
       }
 
+      bool pushSeniority = targetSeniorityCount > 1;
+
       // Replace oldest note
       for(int o = 0; o < MIDI_OUTS; o++) { // Iterate outs
         PackedHistory &out = outHistory[o];
@@ -113,7 +114,6 @@ public:
         }
       }
     } else {
-      uniqueNotes++;
       for(int o = 0; o < MIDI_OUTS; o++) {
         PackedHistory &out = outHistory[o];
         if (out.present) { // Note is held, keep it but make it more senior
@@ -195,6 +195,7 @@ public:
 
 #ifdef USE_SCREEN
   void processScreen(ScreenBuffer& screen){ // Print notes-playing array
+    int uniqueNotes = highestSeniority()+1;
 //debugMessage("Note count", downCount);
     int height = screen.getHeight();
     screen.clear();
