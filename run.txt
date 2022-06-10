@@ -1,4 +1,5 @@
 Command line instructions
+Tested with OwlProgram git revision 0d6c6f2f956f
 
 # Prep (from toplevel)
 
@@ -10,17 +11,17 @@ cd OwlProgram && rm -r PatchSource && git clone git@github.com:mcclure/MagusPatc
 # To test (from OwlProgram)
 
 make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=OWL2
-../FirmwareSender/Builds/MacOSX/build/Debug/FirmwareSender -in Build/patch.bin -out OWL-MIDI -run
+../FirmwareSender/Builds/MacOSX/build/Debug/FirmwareSender -in Build/patch.bin -out OWL-MAGUS -run
 
 # To test (from PatchSource directory)
 
-(cd .. && make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=OWL2 && ../FirmwareSender/Builds/MacOSX/build/Debug/FirmwareSender -in Build/patch.bin -out OWL-MIDI -run)
+(cd .. && make clean && make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=OWL2 && ../FirmwareSender/Builds/MacOSX/build/Debug/FirmwareSender -in Build/patch.bin -out OWL-MAGUS -run)
 
 # Or on Windows/WSL...
 
-../FirmwareSender/Builds/VisualStudio2015/Win32/Release/ConsoleApp/FirmwareSender.exe  -in Build/patch.bin -out OWL-MIDI -run
+../FirmwareSender/Builds/VisualStudio2015/Win32/Release/ConsoleApp/FirmwareSender.exe  -in Build/patch.bin -out OWL-MAGUS -run
 
-(cd .. && make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=OWL2 && ../FirmwareSender/Builds/VisualStudio2015/Win32/Release/ConsoleApp/FirmwareSender.exe -in Build/patch.bin -out OWL-MIDI -run)
+(cd .. && make clean && make patch TOOLROOT= PATCHNAME=ScreenSaver PLATFORM=OWL2 && ../FirmwareSender/Builds/VisualStudio2015/Win32/Release/ConsoleApp/FirmwareSender.exe -in Build/patch.bin -out OWL-MAGUS -run)
 
 # Run simulator example (from PatchSource directory)
 

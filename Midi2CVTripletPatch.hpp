@@ -194,7 +194,7 @@ public:
   }
 
 #ifndef OWL_SIMULATOR
-  void processScreen(ScreenBuffer& screen){ // Print notes-playing array
+  void processScreen(MonochromeScreenBuffer& screen){ // Print notes-playing array
     int uniqueNotes = highestSeniority()+1;
 //debugMessage("Note count", downCount);
     int height = screen.getHeight();

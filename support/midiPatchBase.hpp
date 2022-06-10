@@ -6,6 +6,7 @@
 // If you reuse this code preserving credit is appreciated but not legally required.
 
 #include "OpenWareMidiControl.h"
+#include "MonochromeScreenPatch.h"
 #include "support/noteNames.h"
 #include "support/midi.h"
 #include "basicmaths.h"
@@ -13,7 +14,7 @@
 #define MIDI_MAXDOWN 31
 #define MIDI_RETRIG_LENGTH 16
 
-class MidiPatchBase : public MonochromePatch {
+class MidiPatchBase : public MonochromeScreenPatch {
 protected:
   uint8_t midiDown[MIDI_MAXDOWN]; // Stack of notes down
   uint8_t downCount;         // Number of items in midiDown
@@ -113,12 +114,12 @@ public:
   void buttonChanged(PatchButtonId bid, uint16_t value, uint16_t samples) {
   }
 
-#ifdef USE_SCREEN
-  void printNote(ScreenBuffer& screen, uint8_t note) {
+#ifndef OWL_SIMULATOR
+  void printNote(MonochromeScreenBuffer& screen, uint8_t note) {
     screen.print(noteNames[note%12]);
     screen.write(octaveChar(note));
   }
-  void processScreen(ScreenBuffer& screen){ // Print notes-down stack
+  void processScreen(MonochromeScreenBuffer& screen){ // Print notes-down stack
 //debugMessage("Note count", downCount);
     bool first = true;
     int height = screen.getHeight();

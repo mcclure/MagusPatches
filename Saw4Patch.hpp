@@ -7,7 +7,7 @@
 #include "OpenWareMidiControl.h"
 #include "math.h"
 #include "support/patchForSlot.h"
-//#include "VoltsPerOctave.h"
+#include "support/midi.h" 
 
 class Saw4Patch : public Patch {
 private:
