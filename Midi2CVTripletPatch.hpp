@@ -193,7 +193,7 @@ public:
 #endif
   }
 
-#ifdef USE_SCREEN
+#ifndef OWL_SIMULATOR
   void processScreen(ScreenBuffer& screen){ // Print notes-playing array
     int uniqueNotes = highestSeniority()+1;
 //debugMessage("Note count", downCount);

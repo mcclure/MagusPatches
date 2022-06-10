@@ -184,6 +184,9 @@ struct Patch {{
     float getSampleRate() {{ return {sampleRate}; }}
 }};
 
+struct MonochromePatch : public Patch {{
+}};
+
 struct FloatArray {{
     size_t _size;
     float *_data;

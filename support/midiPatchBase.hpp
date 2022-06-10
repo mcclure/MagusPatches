@@ -13,7 +13,7 @@
 #define MIDI_MAXDOWN 31
 #define MIDI_RETRIG_LENGTH 16
 
-class MidiPatchBase : public Patch {
+class MidiPatchBase : public MonochromePatch {
 protected:
   uint8_t midiDown[MIDI_MAXDOWN]; // Stack of notes down
   uint8_t downCount;         // Number of items in midiDown

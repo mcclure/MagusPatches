@@ -5,6 +5,7 @@
 // Author Andi McClure. License https://creativecommons.org/publicdomain/zero/1.0/
 
 #include "OpenWareMidiControl.h"
+#include "MonochromeScreenPatch.h"
 
 #define ACCUMULATOR_START 0x9A9A9A9A
 #define ACCUMULATOR_MULT  0xA9A9A9A9
@@ -13,7 +14,7 @@
 
 #define BUFFER_SIZE 33
 
-class ScreenSaverPatch : public Patch {
+class ScreenSaverPatch : public MonochromeScreenPatch {
 private:
   uint32_t frame;
   uint32_t accumulator; // RNG
@@ -65,8 +66,8 @@ public:
     memset(rightData, 0, size*sizeof(float));
   }
 
-#ifdef USE_SCREEN
-  void processScreen(ScreenBuffer& screen){
+#ifndef OWL_SIMULATOR
+  void processScreen(MonochromeScreenBuffer& screen){
     int height = screen.getHeight();
     int width = screen.getWidth();
     uint32_t entropy = nextRandom();

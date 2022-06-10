@@ -112,7 +112,7 @@ public:
     }
   }
 
-#ifdef USE_SCREEN
+#if 0
   void processScreen(ScreenBuffer& screen){ // TODO
   }
 #endif
