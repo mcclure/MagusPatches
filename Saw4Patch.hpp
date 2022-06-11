@@ -82,7 +82,7 @@ public:
   void processMidi(MidiMessage msg){
     switch (msg.getStatus()) {
       // Key on
-      case MidiCodeNoteOn:
+      case NOTE_ON:
         midinote = msg.getNote();
         break;
       default:break;

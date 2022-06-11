@@ -7,8 +7,8 @@
 
 #include "OpenWareMidiControl.h"
 #include "MonochromeScreenPatch.h"
-#include "support/noteNames.h"
 #include "support/midi.h"
+#include "support/display.h"
 #include "basicmaths.h"
 
 #define MIDI_MAXDOWN 31
@@ -31,17 +31,6 @@ public:
   ~MidiPatchBase(){
   }
 
-  char digitChar(uint8_t v) { // Get octave number of MIDI note
-    return '0' + v;
-  }
-
-  char octaveChar(uint8_t note) { // Get octave number of MIDI note
-    uint8_t octave = note / 12;
-    if (octave == 0)
-      return '-'; // For -1
-    return digitChar(octave);
-  }
-
   virtual void startNote(int at, uint8_t midiNote) {
   }
 
@@ -53,8 +42,8 @@ public:
 
       switch (status) {
         // Key on
-        case MidiCodeNoteOn:
-        case MidiCodeNoteOff: {
+        case NOTE_ON:
+        case NOTE_OFF: {
           auto midiNote = msg.getNote();
 
           // Check if this note is already somewhere in the midiDown stack.
@@ -78,7 +67,7 @@ public:
           }
 
           switch (status) { // NoteOn and NoteOff implementations branch here
-            case MidiCodeNoteOn: // On key down
+            case NOTE_ON: // On key down
               lastMidi = midiNote; // Set CV out
               if (downCount == MIDI_MAXDOWN) { // We overflowed the stack. Forget the oldest note
                 for(int c = 0; c < MIDI_MAXDOWN-1; c++) {
@@ -93,7 +82,7 @@ public:
                 needRetrig = MIDI_RETRIG_LENGTH;
               isDown = true; // Set gate out
               break;
-            case MidiCodeNoteOff: // On key up
+            case NOTE_OFF: // On key up
               // Set retrig regardless; if isDown is set false it will be removed,
               // But if somehow we receive a down and up at once we'll want that retrig.
               if (matchValue == lastMidi) // Force retrigger if note we let go of was note playing
@@ -115,10 +104,6 @@ public:
   }
 
 #ifndef OWL_SIMULATOR
-  void printNote(MonochromeScreenBuffer& screen, uint8_t note) {
-    screen.print(noteNames[note%12]);
-    screen.write(octaveChar(note));
-  }
   void processScreen(MonochromeScreenBuffer& screen){ // Print notes-down stack
 //debugMessage("Note count", downCount);
     bool first = true;
