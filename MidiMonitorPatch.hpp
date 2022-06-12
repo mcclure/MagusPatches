@@ -63,21 +63,22 @@ public:
       screen.write(' ');
 
       MidiMessage &msg = messageLines[c];
-      screen.setTextColour(BLACK, WHITE);
+      screen.setTextColour(BLACK, WHITE); // White on black for hex
       for(int d = 0; d < 4; d++) {
-        screen.write(hexChar(msg.data[d] >> 8));
+        screen.write(hexChar(msg.data[d] >> 4));
         screen.write(hexChar(msg.data[d]));
       }
 
       screen.setTextColour(WHITE, BLACK);
       screen.write(' ');
 
-      screen.print("ch");
+      screen.print("c");
       screen.write(hexChar(msg.getChannel()));
       screen.write(' ');
 
       auto status = msg.getStatus();
       switch(status) {
+#if 1
         case NOTE_ON:
         case NOTE_OFF: {
           auto midiNote = msg.getNote();
@@ -87,11 +88,29 @@ public:
         } break;
         case CONTROL_CHANGE: {
           screen.print("CC");
+          screen.setTextColour(BLACK, WHITE);
+          screen.write(hexChar(msg.data[2] >> 4));
+          screen.write(hexChar(msg.data[2]));
+          screen.setTextColour(WHITE, BLACK);
+          screen.write(',');
+          screen.setTextColour(BLACK, WHITE);
+          screen.write(hexChar(msg.data[3] >> 4));
+          screen.write(hexChar(msg.data[3]));
         } break;
         case PITCH_BEND_CHANGE: {
-          screen.print("BEND");
+          int16_t bend = msg.getPitchBend();
+          screen.print("BD");
+          screen.write(bend == 0 ? ' ' : (bend < 0 ? '-' : '+'));
+          if (bend<0) bend = -bend;
+          screen.write(bend<1000?' ':digitChar((bend/1000)%10));
+          screen.write(bend<100 ?' ':digitChar((bend/100) %10));
+          screen.write(bend<10  ?' ':digitChar((bend/10)  %10));
+          screen.write(              digitChar((bend)     %10));
         } break;
+#endif
         default: {
+          screen.print("stat ");
+          screen.setTextColour(BLACK, WHITE);
           screen.write(hexChar(status >> 4));
           screen.write(hexChar(status));
         }
@@ -121,4 +140,4 @@ public:
   }
 };
 
-#endif   // __Saw4Patch_hpp__
+#endif   // __MidiMonitorPatch_hpp__
