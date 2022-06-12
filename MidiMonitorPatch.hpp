@@ -8,7 +8,6 @@
 #include "OpenWareMidiControl.h"
 #include "MonochromeScreenPatch.h"
 #include "math.h"
-#include "support/patchForSlot.h"
 #include "support/midi.h"
 #include "support/display.h"
 
