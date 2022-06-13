@@ -9,9 +9,13 @@
 
 #include "support/noteNames.h"
 
+// Metrics: This stuff is not returned by the API so we have to hardcode it [to Magus specs]
+#define CONSOLE_SIZE_X 21
+#define CONSOLE_SIZE_Y 7
+#define CONSOLE_STEP_Y 8
 // If you want to draw a character at 0,0, you actually have to draw it at 0,8
-#define YZERO 8
-#define YSTEP 8
+#define CONSOLE_ZERO_Y (CONSOLE_STEP_Y)
+#define CONSOLE_STEP_X 6
 
 static char digitChar(uint8_t v) { // Get octave number of MIDI note (assume range 0-10)
 	return '0' + v;

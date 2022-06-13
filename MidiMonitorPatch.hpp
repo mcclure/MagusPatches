@@ -45,13 +45,13 @@ public:
   }
 
   void processScreen(MonochromeScreenBuffer& screen) {
-    int cury = YZERO; // Magic number?
+    int cury = CONSOLE_Y_ZERO;
 
     screen.clear();
     
     if (messageLineCount == 0) {
       screen.setTextColour(WHITE, BLACK);
-      screen.print(0,YZERO,"  Awaiting MIDI...");
+      screen.print(0,CONSOLE_Y_ZERO,"  Awaiting MIDI...");
     }
 
     for(int c = 0; c < messageLineCount; c++) {
@@ -115,7 +115,7 @@ public:
         }
       }
 
-      cury += YSTEP;
+      cury += CONSOLE_Y_STEP;
     }
   }
 #endif
