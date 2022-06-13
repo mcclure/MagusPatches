@@ -54,7 +54,7 @@ public:
   }
 
   void lightSet(unsigned int light, bool on) {
-    MidiMessage msg(0x0B, CONTROL_CHANGE, lightCC[light], on?127:0);
+    MidiMessage msg((CONTROL_CHANGE) >> 4, CONTROL_CHANGE, lightCC[light], on?127:0);
     sendMidi(msg);
   }
 
