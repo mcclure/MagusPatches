@@ -3,7 +3,7 @@
 
 // Works with a Korg nanoKONTROL2 (assumes port 0 channel 0)
 // Acts like a sequencer for the parameter ports (assumes Magus)
-// Author Andi McClure. License https://creativecommons.org/publicdomain/zero/1.0/
+// Author Andi McClure. Released under MIT license https://choosealicense.com/licenses/mit/
 
 #include "OpenWareMidiControl.h"
 #include "MonochromeScreenPatch.h"
@@ -21,8 +21,9 @@ enum CcGroup {
 };
 
 // Also counts as knob/SMR count
-#define SLIDER_COUNT 8
-#define SLIDER_META_ALLOW true
+#define LANE_COUNT 8
+#define LANE_META_ALLOW false
+#define KNOB_MIDPOINT 64
 
 enum CcUniqueId {
   CC_UNIQUE_SONG_L,
@@ -118,11 +119,16 @@ private:
     bool lightOn[LIGHT_COUNT];
     uint8_t lightCcIdx[LIGHT_COUNT];
 
+    uint8_t lastStateSlider[LANE_COUNT];
+    uint8_t lastStateKnob[LANE_COUNT];
+
     int debug1, debug2; // DELETE ME
 
 public:
   NanoKontrolSeqPatch(){
     BZERO(lightOn);
+    BZERO(lastStateSlider);
+    memset(lastStateKnob, KNOB_MIDPOINT, sizeof(lastStateKnob));
 
     // Register all ports as outputs
     char scratch[5] = {0,0, 0, '>',0};
@@ -175,7 +181,6 @@ debug1 = -1; debug2 = 0;
         uint8_t ccIdxLow = 0;
         uint8_t ccIdxHigh = CC_COUNT-1;
         while (1) {
-if (debug2 > 10) { debug1 = cc; return; }
           CcInfo &info = ccDb[ccIdx];
           int newCcIdx;
           debug2++;
@@ -192,14 +197,41 @@ if (debug2 > 10) { debug1 = cc; return; }
             if (ccIdx == newCcIdx)
               newCcIdx++;
           }
-          if (ccIdxLow >= ccIdxHigh)
+          if (ccIdxLow >= ccIdxHigh) {
+            debug1 = -cc;
             return; // Unrecognized CC!
+          }
           ccIdx = newCcIdx;
         }
       }
 
       // Now act
       debug1 = ccDb[ccIdx].cc;
+      debug2 = -ccIdx;
+
+      CcInfo &info = ccDb[ccIdx];
+      bool laneValueChange = false;
+      switch (info.group) {
+        case CC_GROUP_SLIDER: {
+          laneValueChange = true;
+          lastStateSlider[info.id] = value;
+        } break;
+        case CC_GROUP_KNOB: {
+          laneValueChange = true;
+          lastStateKnob[info.id] = value;
+        } break;
+        case CC_GROUP_RECORD: {
+          lightSet(cc, value);
+          setParameterValue((PatchParameterId)(8+info.id), value/127.0);
+        } break;
+        default:break;
+      }
+      if (laneValueChange) {
+        debug2 = value;
+        setParameterValue((PatchParameterId)(0+info.id), 
+          lastStateSlider[info.id]/127.0+
+          (lastStateKnob[info.id]-KNOB_MIDPOINT)/(KNOB_MIDPOINT*127.0));
+      }
     }
   }
 

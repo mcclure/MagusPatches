@@ -45,13 +45,13 @@ public:
   }
 
   void processScreen(MonochromeScreenBuffer& screen) {
-    int cury = CONSOLE_Y_ZERO;
+    int cury = CONSOLE_ZERO_Y;
 
     screen.clear();
     
     if (messageLineCount == 0) {
       screen.setTextColour(WHITE, BLACK);
-      screen.print(0,CONSOLE_Y_ZERO,"  Awaiting MIDI...");
+      screen.print(0,CONSOLE_ZERO_Y,"  Awaiting MIDI...");
     }
 
     for(int c = 0; c < messageLineCount; c++) {
@@ -115,7 +115,7 @@ public:
         }
       }
 
-      cury += CONSOLE_Y_STEP;
+      cury += CONSOLE_STEP_Y;
     }
   }
 #endif
