@@ -94,4 +94,4 @@ public:
 
 };
 
-#endif   // __Saw4Patch_hpp__
+#endif   // __ScreenSaver_hpp__
