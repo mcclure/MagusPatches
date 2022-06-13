@@ -94,8 +94,9 @@ CcInfo ccDb[CC_COUNT] = {
   {54, CC_GROUP_MUTE, 6},
   {55, CC_GROUP_MUTE, 7},
 
-  {62, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_L},
-  {62, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_R},
+  {58, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_L},
+  {59, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_R},
+
   {60, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_CLICK},
   {61, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_L},
   {62, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_R},
@@ -170,7 +171,7 @@ debug1 = -2; debug2 = -2;
       const uint8_t &value = msg.data[3];
       uint8_t ccIdx = CC_COUNT/2;
 debug1 = -1; debug2 = 0;
-      { // Binary search for ccIdx
+      { // Binary search for ccIdx (see note on ccDB)
         uint8_t ccIdxLow = 0;
         uint8_t ccIdxHigh = CC_COUNT-1;
         while (1) {
@@ -184,12 +185,12 @@ if (debug2 > 10) { debug1 = cc; return; }
             ccIdxHigh = ccIdx;
             newCcIdx = ccIdxLow + (ccIdx-ccIdxLow)/2;
             if (ccIdx == newCcIdx)
-              ccIdx--;
+              newCcIdx--;
           } else { // New lower bound
             ccIdxLow = ccIdx;
             newCcIdx = ccIdx + (ccIdxHigh-ccIdx)/2;
             if (ccIdx == newCcIdx)
-              ccIdx++;
+              newCcIdx++;
           }
           if (ccIdxLow >= ccIdxHigh)
             return; // Unrecognized CC!
