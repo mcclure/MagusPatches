@@ -82,7 +82,7 @@ public:
       if (completeCount) {
         specialsActiveCount -= completeCount;
         if (specialsActiveCount>0) {
-          for(unsigned int c = 0; c < specialsActiveCount; c++)
+          for(unsigned int c = 0; c < specialsActiveCount-completeCount; c++)
             specials[c] = specials[c+completeCount];
         }
       }
@@ -90,11 +90,12 @@ public:
       unsigned int fliersActiveCountWas = fliersActiveCount;
       for(unsigned int c = 0; c < fliersActiveCountWas; c++) {
         unsigned int &flier = fliers[c];
-        int speed = (1 << c);
+        int speed = c+1;
         int effectiveFlier = flier / speed;
         lightOn[effectiveFlier] = true;
 
         flier++;
+        effectiveFlier = flier / speed;
         if (effectiveFlier != 0 && effectiveFlier%8 == 0 && flier%speed==0) {
           if (specialsActiveCount < SPECIAL_COUNT && 
               (specialsActiveCount==0 || specials[specialsActiveCount-1] != 0)) {
