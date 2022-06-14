@@ -22,8 +22,13 @@ enum CcGroup {
 
 // Also counts as knob/SMR count
 #define LANE_COUNT 8
+#define NOTE_COUNT (LANE_COUNT+1)
 #define LANE_META_ALLOW false
 #define KNOB_MIDPOINT 64
+// The knob crosses two slider ticks on either side. Set to 127 for finest control
+#define KNOB_RADIX (127.0/2.0)
+// Includes all lightable uniques, including PLAY
+#define UNIQUE_LIT_COUNT 6
 
 enum CcUniqueId {
   CC_UNIQUE_SONG_L,
@@ -37,6 +42,8 @@ enum CcUniqueId {
   CC_UNIQUE_STOP,
   CC_UNIQUE_PLAY,
   CC_UNIQUE_REC,
+
+  CC_UNIQUE_LITROOT = CC_UNIQUE_SHIFT
 };
 
 struct CcInfo {
@@ -112,23 +119,36 @@ CcInfo ccDb[CC_COUNT] = {
   {71, CC_GROUP_RECORD, 7},
 };
 
+struct Note {
+  uint8_t slider[LANE_COUNT];
+  uint8_t knob[LANE_COUNT];
+};
+
 #define BZERO(field) memset(field, 0, sizeof(field))
 
 class NanoKontrolSeqPatch : public MonochromeScreenPatch {
 private:
-    bool lightOn[LIGHT_COUNT];
-    uint8_t lightCcIdx[LIGHT_COUNT];
+    bool lightOn[LIGHT_COUNT]; // lightIdx to ON (last frame)
+    uint8_t lightDbIdx[LIGHT_COUNT]; // lightIdx to DB idx
+    uint8_t dbRootRec, dbRootMute, dbRootSolo, dbUniqueLit[UNIQUE_LIT_COUNT]; // db idx
+    bool uniqueLitDown[UNIQUE_LIT_COUNT]; // id minus CC_UNIQUE_LITROOT
 
-    uint8_t lastStateSlider[LANE_COUNT];
-    uint8_t lastStateKnob[LANE_COUNT];
+    Note song[NOTE_COUNT];
+    uint8_t songAt;
+//    bool needLights;
 
     int debug1, debug2; // DELETE ME
 
 public:
   NanoKontrolSeqPatch(){
     BZERO(lightOn);
-    BZERO(lastStateSlider);
-    memset(lastStateKnob, KNOB_MIDPOINT, sizeof(lastStateKnob));
+    // BZERO(dbUniqueLit); // If DB is messed up and does not contain all 6 unique lits, this will prevent crash
+    songAt = 0;
+//    needLights = true;
+    for(int c = 0; c < NOTE_COUNT; c++) {
+      BZERO(song[c].slider);
+      memset(song[c].knob, KNOB_MIDPOINT, sizeof(song[c].knob));
+    }
 
     // Register all ports as outputs
     char scratch[5] = {0,0, 0, '>',0};
@@ -150,10 +170,24 @@ public:
     int lightIdx = 0;
     for(unsigned int c = 0; c < CC_COUNT; c++) {
       CcInfo &info = ccDb[c];
+#define SPECIALLY_IDENTIFY_PLAY(info) ((info).group == CC_GROUP_UNIQUE_UNLIT && (info).id == CC_UNIQUE_PLAY)
       if (info.group == CC_GROUP_MUTE || info.group == CC_GROUP_SOLO || info.group == CC_GROUP_RECORD
-       || info.group == CC_GROUP_UNIQUE_LIT || (info.group == CC_GROUP_UNIQUE_UNLIT && info.id == CC_UNIQUE_PLAY)) {
+       || info.group == CC_GROUP_UNIQUE_LIT || SPECIALLY_IDENTIFY_PLAY(info)) {
         info.lightIdx = lightIdx;
-        lightCcIdx[lightIdx] = c;
+        lightDbIdx[lightIdx] = c;
+
+        // Mark location of important lights
+        if (info.id == 0) {
+          if (info.group == CC_GROUP_RECORD)
+            dbRootRec = c;
+          else if (info.group == CC_GROUP_MUTE)
+            dbRootMute = c;
+          else if (info.group == CC_GROUP_SOLO)
+            dbRootSolo = c;
+        } else if (info.group == CC_GROUP_UNIQUE_LIT || SPECIALLY_IDENTIFY_PLAY(info)) {
+          dbUniqueLit[info.id-CC_UNIQUE_LITROOT] = c;
+        }
+
         lightIdx++;
       } else {
         info.lightIdx = -1;
@@ -168,6 +202,12 @@ public:
   void lightSet(unsigned int cc, bool on) {
     MidiMessage msg((CONTROL_CHANGE) >> 4, CONTROL_CHANGE, cc, on?127:0);
     sendMidi(msg);
+  }
+
+  void paramSet(uint8_t lane, Note &n) {
+    setParameterValue((PatchParameterId)(0+lane), 
+      n.slider[lane]/127.0+
+      (n.knob[lane]-KNOB_MIDPOINT)/(KNOB_MIDPOINT*KNOB_RADIX));
   }
 
   void processMidi(MidiMessage msg){
@@ -209,29 +249,55 @@ debug1 = -1; debug2 = 0;
       debug1 = ccDb[ccIdx].cc;
       debug2 = -ccIdx;
 
+      bool lightOnWas[LIGHT_COUNT];
+      memcpy(lightOnWas, lightOn, sizeof(lightOnWas));
+      BZERO(lightOn);
+
       CcInfo &info = ccDb[ccIdx];
       bool laneValueChange = false;
       switch (info.group) {
         case CC_GROUP_SLIDER: {
           laneValueChange = true;
-          lastStateSlider[info.id] = value;
+          song[songAt].slider[info.id] = value;
         } break;
         case CC_GROUP_KNOB: {
           laneValueChange = true;
-          lastStateKnob[info.id] = value;
+          song[songAt].knob[info.id] = value;
         } break;
         case CC_GROUP_RECORD: {
-          lightSet(cc, value);
-          setParameterValue((PatchParameterId)(8+info.id), value/127.0);
+          songAt = info.id;
+          Note &n = song[songAt];
+          for(int c = 0; c < LANE_COUNT; c++)
+            paramSet(c, n);
         } break;
+        case CC_GROUP_UNIQUE_LIT: {
+          uniqueLitDown[info.id-CC_UNIQUE_LITROOT] = value>0;
+        }
         default:break;
       }
       if (laneValueChange) {
         debug2 = value;
-        setParameterValue((PatchParameterId)(0+info.id), 
-          lastStateSlider[info.id]/127.0+
-          (lastStateKnob[info.id]-KNOB_MIDPOINT)/(KNOB_MIDPOINT*127.0));
+        paramSet(info.id, song[songAt]);
       }
+      lightOn[ccDb[dbRootRec].lightIdx + songAt] = true;
+      debug2 = ccDb[dbRootRec].lightIdx + songAt;
+
+//      needLights = true;
+
+      // FIXME: Will not run first time or on free run
+//      if (needLights) {
+        // Send light changes
+        for(unsigned int c = 0; c < UNIQUE_LIT_COUNT; c++)
+          lightOn[ccDb[dbUniqueLit[c]].lightIdx] = uniqueLitDown[c];
+        for(unsigned int c = 0; c < LIGHT_COUNT; c++) {
+          unsigned int cc = ccDb[lightDbIdx[c]].cc;
+          if (lightOn[c] != lightOnWas[c]) {
+            lightSet(cc, lightOn[c]);
+          }
+        }
+
+//        needLights = false;
+//      }
     }
   }
 
