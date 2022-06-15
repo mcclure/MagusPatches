@@ -9,6 +9,27 @@
 #include "MonochromeScreenPatch.h"
 #include "support/display.h"
 
+// Constants
+
+#define LANE_COUNT 8
+#define NOTE_COUNT (LANE_COUNT+1)
+#define LANE_META_ALLOW false
+#define KNOB_MIDPOINT 64
+// The knob crosses two slider ticks on either side. Set to 127 for finest control
+#define KNOB_RADIX (127.0/2.0)
+// Includes all lightable uniques, including PLAY
+#define UNIQUE_LIT_COUNT 6
+// If 0, will run for only 24 hours and 51 minutes and then there will be an audible glitch.
+// If 1, will be able to run continuously for 12 million years
+#define LONG_RUNNING 0
+#define DEFAULT_BPM 140
+
+// If you see "unvirtual" on a method, it means nothing, I'm just documenting
+// this method CANNOT be made virtual because it is called from the constructor
+// API methods assumed constructor-safe: getBlockSize, getSampleRate
+#define unvirtual
+
+// Categories for CC database
 enum CcGroup {
   CC_GROUP_SLIDER,
   CC_GROUP_KNOB,
@@ -20,16 +41,7 @@ enum CcGroup {
   CC_GROUP_UNIQUE_UNLIT,
 };
 
-// Also counts as knob/SMR count
-#define LANE_COUNT 8
-#define NOTE_COUNT (LANE_COUNT+1)
-#define LANE_META_ALLOW false
-#define KNOB_MIDPOINT 64
-// The knob crosses two slider ticks on either side. Set to 127 for finest control
-#define KNOB_RADIX (127.0/2.0)
-// Includes all lightable uniques, including PLAY
-#define UNIQUE_LIT_COUNT 6
-
+// IDs for CC_GROUP_UNIQUE_LIT/CC_GROUP_UNIQUE_UNLIT
 enum CcUniqueId {
   CC_UNIQUE_SONG_L,
   CC_UNIQUE_SONG_R,
@@ -46,11 +58,12 @@ enum CcUniqueId {
   CC_UNIQUE_LITROOT = CC_UNIQUE_SHIFT
 };
 
+// Item in the "CC database", which has one item for each button/control
 struct CcInfo {
-  uint8_t cc;
-  uint8_t group;
-  uint8_t id;
-  int8_t lightIdx; // Value undefined for non-light buttons
+  uint8_t cc;      // MIDI CC value
+  uint8_t group;   // CcGroup
+  uint8_t id;      // CcUniqueId
+  int8_t lightIdx; // Index in lightOn/lightDbIdx, always -1 for non-light buttons
 };
 
 // This could be much simpler if I switched out the supported nanoKontrol2 profile
@@ -119,9 +132,22 @@ CcInfo ccDb[CC_COUNT] = {
   {71, CC_GROUP_RECORD, 7},
 };
 
+#if LONG_RUNNING
+typedef uint64_t TimeCode;
+#else
+typedef uint32_t TimeCode;
+#endif
+
+// Remember lanes make up a note, notes make up a song
+
 struct Note {
-  uint8_t slider[LANE_COUNT];
-  uint8_t knob[LANE_COUNT];
+  uint8_t slider[LANE_COUNT]; // 0-127
+  uint8_t knob[LANE_COUNT];   // 0-127
+};
+
+struct Song {
+  Note notes[NOTE_COUNT];
+  uint32_t period;            // Step length in samples
 };
 
 #define BZERO(field) memset(field, 0, sizeof(field))
@@ -133,8 +159,9 @@ private:
     uint8_t dbRootRec, dbRootMute, dbRootSolo, dbUniqueLit[UNIQUE_LIT_COUNT]; // db idx
     bool uniqueLitDown[UNIQUE_LIT_COUNT]; // id minus CC_UNIQUE_LITROOT
 
-    Note song[NOTE_COUNT];
-    uint8_t songAt;
+    Song song;
+    uint8_t noteAt;  // Current sequencer step
+    TimeCode timeAt; // Current time progression
 //    bool needLights;
 
     int debug1, debug2; // DELETE ME
@@ -143,12 +170,10 @@ public:
   NanoKontrolSeqPatch(){
     BZERO(lightOn);
     // BZERO(dbUniqueLit); // If DB is messed up and does not contain all 6 unique lits, this will prevent crash
-    songAt = 0;
+    noteAt = 0;
+    timeAt = 0;
 //    needLights = true;
-    for(int c = 0; c < NOTE_COUNT; c++) {
-      BZERO(song[c].slider);
-      memset(song[c].knob, KNOB_MIDPOINT, sizeof(song[c].knob));
-    }
+    initSong(song);
 
     // Register all ports as outputs
     char scratch[5] = {0,0, 0, '>',0};
@@ -199,25 +224,51 @@ public:
   ~NanoKontrolSeqPatch(){
   }
 
+  // Reset a song to defaults
+  unvirtual void initSong(Song &target) {
+    for(int c = 0; c < NOTE_COUNT; c++) {
+      BZERO(target.notes[c].slider);
+      memset(target.notes[c].knob, KNOB_MIDPOINT, sizeof(target.notes[c].knob));
+    }
+    target.period = defaultPeriod();
+  }
+
+  // Hard set a light on or off (bypasses caching)
   void lightSet(unsigned int cc, bool on) {
     MidiMessage msg((CONTROL_CHANGE) >> 4, CONTROL_CHANGE, cc, on?127:0);
     sendMidi(msg);
   }
 
+  // Set a parameter from lane values
   void paramSet(uint8_t lane, Note &n) {
     setParameterValue((PatchParameterId)(0+lane), 
-      n.slider[lane]/127.0+
+      n.slider[lane]/127.0f+
       (n.knob[lane]-KNOB_MIDPOINT)/(KNOB_MIDPOINT*KNOB_RADIX));
   }
 
+  // Convert DEFAULT_BPM to a sample period
+  unvirtual float defaultPeriod() {
+    return getSampleRate()*60.0f/DEFAULT_BPM;
+  }
+
+  // Round a period to a "usable" BPM
+  unvirtual uint32_t roundPeriod(float period) {
+    uint32_t blockSize = getBlockSize();
+    return roundf(period/blockSize)*blockSize;
+  }
+
+  // Process MIDI
   void processMidi(MidiMessage msg){
 debug1 = -2; debug2 = -2;
+    // Ignore non-CC MIDI
     if ((msg.data[1] & 0xF0) == CONTROL_CHANGE) {
       const uint8_t &cc = msg.data[2];
       const uint8_t &value = msg.data[3];
+
+      // Binary search for ccIdx (see note on ccDB)
       uint8_t ccIdx = CC_COUNT/2;
 debug1 = -1; debug2 = 0;
-      { // Binary search for ccIdx (see note on ccDB)
+      {
         uint8_t ccIdxLow = 0;
         uint8_t ccIdxHigh = CC_COUNT-1;
         while (1) {
@@ -239,34 +290,36 @@ debug1 = -1; debug2 = 0;
           }
           if (ccIdxLow >= ccIdxHigh) {
             debug1 = -cc;
-            return; // Unrecognized CC!
+            return; // Unrecognized CC, cancel everything
           }
           ccIdx = newCcIdx;
         }
       }
 
-      // Now act
+      // Have a known CC, now act
       debug1 = ccDb[ccIdx].cc;
       debug2 = -ccIdx;
 
+      // Lights may change after this point
       bool lightOnWas[LIGHT_COUNT];
       memcpy(lightOnWas, lightOn, sizeof(lightOnWas));
       BZERO(lightOn);
 
+      // Handle control
       CcInfo &info = ccDb[ccIdx];
       bool laneValueChange = false;
       switch (info.group) {
         case CC_GROUP_SLIDER: {
           laneValueChange = true;
-          song[songAt].slider[info.id] = value;
+          song.notes[noteAt].slider[info.id] = value;
         } break;
         case CC_GROUP_KNOB: {
           laneValueChange = true;
-          song[songAt].knob[info.id] = value;
+          song.notes[noteAt].knob[info.id] = value;
         } break;
         case CC_GROUP_RECORD: {
-          songAt = info.id;
-          Note &n = song[songAt];
+          noteAt = info.id;
+          Note &n = song.notes[noteAt];
           for(int c = 0; c < LANE_COUNT; c++)
             paramSet(c, n);
         } break;
@@ -275,13 +328,18 @@ debug1 = -1; debug2 = 0;
         }
         default:break;
       }
+
+      // Control handled, execute consequences
+      // A lane changed
       if (laneValueChange) {
         debug2 = value;
-        paramSet(info.id, song[songAt]);
+        paramSet(info.id, song.notes[noteAt]);
       }
-      lightOn[ccDb[dbRootRec].lightIdx + songAt] = true;
-      debug2 = ccDb[dbRootRec].lightIdx + songAt;
+      // Current note may have changed
+      lightOn[ccDb[dbRootRec].lightIdx + noteAt] = true;
+      debug2 = ccDb[dbRootRec].lightIdx + noteAt;
 
+      // Lights may have changed
 //      needLights = true;
 
       // FIXME: Will not run first time or on free run
@@ -304,8 +362,9 @@ debug1 = -1; debug2 = 0;
   void buttonChanged(PatchButtonId bid, uint16_t value, uint16_t samples){
   }
 
+  // Process audio 
   void processAudio(AudioBuffer& buffer){
-//    float timeStep = ((float)getBlockSize()/getSampleRate());
+//    uint32_t timeStep = getBlockSize();
 
     { // Audio silence
       FloatArray left = buffer.getSamples(LEFT_CHANNEL);
@@ -338,6 +397,8 @@ debug1 = -1; debug2 = 0;
     }
   }
 
+  // Redraw screen
+  // TODO: Only do this when screenChanged
   void processScreen(MonochromeScreenBuffer& screen) {
     screen.clear();
 
