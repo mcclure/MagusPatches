@@ -12,7 +12,7 @@
 // Constants
 
 #define LANE_COUNT 8
-#define NOTE_COUNT (LANE_COUNT+1)
+#define NOTE_COUNT (LANE_COUNT)
 #define LANE_META_ALLOW false
 #define KNOB_MIDPOINT 64
 // The knob crosses two slider ticks on either side. Set to 127 for finest control
@@ -21,7 +21,7 @@
 #define UNIQUE_LIT_COUNT 6
 // If 0, will run for only 24 hours and 51 minutes and then there will be an audible glitch.
 // If 1, will be able to run continuously for 12 million years
-#define LONG_RUNNING 0
+// #define LONG_RUNNING 0 // Wait... do I need a global timer?
 #define DEFAULT_BPM 140
 
 // If you see "unvirtual" on a method, it means nothing, I'm just documenting
@@ -55,6 +55,7 @@ enum CcUniqueId {
   CC_UNIQUE_PLAY,
   CC_UNIQUE_REC,
 
+  CC_UNIQUE_COUNT,
   CC_UNIQUE_LITROOT = CC_UNIQUE_SHIFT
 };
 
@@ -132,10 +133,12 @@ CcInfo ccDb[CC_COUNT] = {
   {71, CC_GROUP_RECORD, 7},
 };
 
+#if 0
 #if LONG_RUNNING
 typedef uint64_t TimeCode;
 #else
 typedef uint32_t TimeCode;
+#endif
 #endif
 
 // Remember lanes make up a note, notes make up a song
@@ -150,29 +153,52 @@ struct Song {
   uint32_t period;            // Step length in samples
 };
 
+enum SongState {
+  SongDrone, // Stopped, but all triggers are open
+  SongStop,  // Stopped, and no triggers are open
+  SongPlay,  // Playing
+};
+#if 0
+enum ButtonState {
+  ButtonNeutral = 0,
+  ButtonPressed = 1,
+  ButtonToggle  = 2,
+  ButtonBlink   = 3,
+
+  ButtonBlinkShift = 2
+};
+#endif
+
 #define BZERO(field) memset(field, 0, sizeof(field))
 
 class NanoKontrolSeqPatch : public MonochromeScreenPatch {
 private:
-    bool lightOn[LIGHT_COUNT]; // lightIdx to ON (last frame)
+    bool lightOn[LIGHT_COUNT], lightOnWas[LIGHT_COUNT]; // lightIdx to ON (current frame, last frame)
     uint8_t lightDbIdx[LIGHT_COUNT]; // lightIdx to DB idx
     uint8_t dbRootRec, dbRootMute, dbRootSolo, dbUniqueLit[UNIQUE_LIT_COUNT]; // db idx
     bool uniqueLitDown[UNIQUE_LIT_COUNT]; // id minus CC_UNIQUE_LITROOT
+    //uint8_t buttonState[CC_UNIQUE_COUNT]; // ButtonState // TODO clarify difference from uniqueLitDown
 
     Song song;
+
+    SongState playing;
     uint8_t noteAt;  // Current sequencer step
-    TimeCode timeAt; // Current time progression
-//    bool needLights;
+//    TimeCode timeAt; // Current time progression
+    int32_t nextStep;
+
+    bool needLights; // If true, lightOn has been updated
 
     int debug1, debug2; // DELETE ME
 
 public:
   NanoKontrolSeqPatch(){
     BZERO(lightOn);
+    BZERO(lightOnWas);
     // BZERO(dbUniqueLit); // If DB is messed up and does not contain all 6 unique lits, this will prevent crash
     noteAt = 0;
-    timeAt = 0;
-//    needLights = true;
+//    timeAt = 0;
+    nextStep = 0;
+    needLights = true;
     initSong(song);
 
     // Register all ports as outputs
@@ -239,11 +265,49 @@ public:
     sendMidi(msg);
   }
 
+  // Call when something is about to happen that could change light state
+  void readyLights() {
+    if (!needLights) { // Don't stomp existing lights state 
+      memcpy(lightOnWas, lightOn, sizeof(lightOnWas));
+      BZERO(lightOn);
+      needLights = true; // FIXME: Could be more efficient by setting this selectively when state changes
+    }
+  }
+
+  // Call when you are done potentially-updating lights
+  void updateLights() {
+    if (needLights) {
+      // Set "obvious" state
+      // Set exactly one R
+      lightOn[ccDb[dbRootRec].lightIdx + noteAt] = true;
+      // Set play if playing
+      uniqueLitDown[CC_UNIQUE_PLAY-CC_UNIQUE_LITROOT] = playing == SongPlay;
+      uniqueLitDown[CC_UNIQUE_STOP-CC_UNIQUE_LITROOT] = playing == SongStop;
+
+      // Send light changes
+      for(unsigned int c = 0; c < UNIQUE_LIT_COUNT; c++)
+        lightOn[ccDb[dbUniqueLit[c]].lightIdx] = uniqueLitDown[c];
+      for(unsigned int c = 0; c < LIGHT_COUNT; c++) {
+        unsigned int cc = ccDb[lightDbIdx[c]].cc;
+        if (lightOn[c] != lightOnWas[c]) {
+          lightSet(cc, lightOn[c]);
+        }
+      }
+      needLights = false;
+    }
+  }
+
   // Set a parameter from lane values
   void paramSet(uint8_t lane, Note &n) {
     setParameterValue((PatchParameterId)(0+lane), 
       n.slider[lane]/127.0f+
       (n.knob[lane]-KNOB_MIDPOINT)/(KNOB_MIDPOINT*KNOB_RADIX));
+  }
+
+  void noteChanged() {
+    Note &n = song.notes[noteAt];
+    for(int c = 0; c < LANE_COUNT; c++)
+      paramSet(c, n);
   }
 
   // Convert DEFAULT_BPM to a sample period
@@ -301,9 +365,7 @@ debug1 = -1; debug2 = 0;
       debug2 = -ccIdx;
 
       // Lights may change after this point
-      bool lightOnWas[LIGHT_COUNT];
-      memcpy(lightOnWas, lightOn, sizeof(lightOnWas));
-      BZERO(lightOn);
+      readyLights();
 
       // Handle control
       CcInfo &info = ccDb[ccIdx];
@@ -319,13 +381,28 @@ debug1 = -1; debug2 = 0;
         } break;
         case CC_GROUP_RECORD: {
           noteAt = info.id;
-          Note &n = song.notes[noteAt];
-          for(int c = 0; c < LANE_COUNT; c++)
-            paramSet(c, n);
+          noteChanged();
+        } break;
+        case CC_GROUP_UNIQUE_UNLIT: {
+          if (info.id == CC_UNIQUE_PLAY && value>0) {
+            // FIXME: Abstract this
+            // FIXME: This is all wrong, this is assuming it runs every frame but we only get notifications on change
+//            uint8_t &button = buttonState[CC_UNIQUE_PLAY];
+            if (playing == SongPlay) {
+              playing = SongStop;
+            } else {
+              playing = SongPlay;
+            }
+          }
         } break;
         case CC_GROUP_UNIQUE_LIT: {
           uniqueLitDown[info.id-CC_UNIQUE_LITROOT] = value>0;
-        }
+
+          if (info.id == CC_UNIQUE_STOP && value>0) {
+            playing = SongStop;
+            noteAt = 0;
+          }
+        } break;
         default:break;
       }
 
@@ -335,27 +412,9 @@ debug1 = -1; debug2 = 0;
         debug2 = value;
         paramSet(info.id, song.notes[noteAt]);
       }
-      // Current note may have changed
-      lightOn[ccDb[dbRootRec].lightIdx + noteAt] = true;
-      debug2 = ccDb[dbRootRec].lightIdx + noteAt;
 
       // Lights may have changed
-//      needLights = true;
-
-      // FIXME: Will not run first time or on free run
-//      if (needLights) {
-        // Send light changes
-        for(unsigned int c = 0; c < UNIQUE_LIT_COUNT; c++)
-          lightOn[ccDb[dbUniqueLit[c]].lightIdx] = uniqueLitDown[c];
-        for(unsigned int c = 0; c < LIGHT_COUNT; c++) {
-          unsigned int cc = ccDb[lightDbIdx[c]].cc;
-          if (lightOn[c] != lightOnWas[c]) {
-            lightSet(cc, lightOn[c]);
-          }
-        }
-
-//        needLights = false;
-//      }
+      updateLights();
     }
   }
 
@@ -364,8 +423,6 @@ debug1 = -1; debug2 = 0;
 
   // Process audio 
   void processAudio(AudioBuffer& buffer){
-//    uint32_t timeStep = getBlockSize();
-
     { // Audio silence
       FloatArray left = buffer.getSamples(LEFT_CHANNEL);
       FloatArray right = buffer.getSamples(RIGHT_CHANNEL);
@@ -379,6 +436,22 @@ debug1 = -1; debug2 = 0;
       memset(leftData,  0, size*sizeof(float));
       memset(rightData, 0, size*sizeof(float));
     }
+
+    uint32_t timeStep = getBlockSize();
+    if (playing == SongPlay) {
+      nextStep -= timeStep;
+
+      if (nextStep <= 0) {
+        readyLights();
+
+        noteAt++;
+        noteAt %= NOTE_COUNT;
+        nextStep += song.period;
+
+        noteChanged();
+      }
+    }
+    updateLights(); // Catch any straggling light changes
   }
 
   // Print an integer, right-aligned
