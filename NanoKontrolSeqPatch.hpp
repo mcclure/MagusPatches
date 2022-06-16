@@ -13,10 +13,12 @@
 
 #define LANE_COUNT 8
 #define NOTE_COUNT (LANE_COUNT)
-#define LANE_META_ALLOW false
+// This lane is the "BPM"
+#define LANE_PERIOD 7
 #define KNOB_MIDPOINT 64
-// The knob crosses two slider ticks on either side. Set to 127 for finest control
-#define KNOB_RADIX (127.0/2.0)
+// The knob crosses two slider ticks on either side. Set to 1.0 for finest control
+#define KNOB_MAG 2.0
+#define KNOB_RADIX (127.0/KNOB_MAG)
 // Includes all lightable uniques, including PLAY
 #define UNIQUE_LIT_COUNT 6
 // If 0, will run for only 24 hours and 51 minutes and then there will be an audible glitch.
@@ -174,14 +176,21 @@ enum ButtonState {
 
 class NanoKontrolSeqPatch : public MonochromeScreenPatch {
 private:
+    // Display state
     bool lightOn[LIGHT_COUNT], lightOnWas[LIGHT_COUNT]; // lightIdx to ON (current frame, last frame)
     uint8_t lightDbIdx[LIGHT_COUNT]; // lightIdx to DB idx
     uint8_t dbRootRec, dbRootMute, dbRootSolo, dbUniqueLit[UNIQUE_LIT_COUNT]; // db idx
     bool uniqueLitDown[UNIQUE_LIT_COUNT]; // id minus CC_UNIQUE_LITROOT
     //uint8_t buttonState[CC_UNIQUE_COUNT]; // ButtonState // TODO clarify difference from uniqueLitDown
 
+    // UI state // TODO: "Apps"?
+    bool songPeriodMode;
+    Note songPeriodNote; // FIXME: Store one lane not all 8!
+
+    // Song
     Song song;
 
+    // Player state
     SongState playing;
     uint8_t noteAt;  // Current sequencer step
 //    TimeCode timeAt; // Current time progression
@@ -196,6 +205,7 @@ public:
     BZERO(lightOn);
     BZERO(lightOnWas);
     // BZERO(dbUniqueLit); // If DB is messed up and does not contain all 6 unique lits, this will prevent crash
+    songPeriodMode = false;
     noteAt = 0;
 //    timeAt = 0;
     nextStep = 0;
@@ -280,13 +290,18 @@ public:
   void updateLights() {
     if (needLights) {
       // Set "obvious" state
-      // Set exactly one R
-      const int8_t rootLightIdx = ccDb[dbRootRec].lightIdx;
-      if (!shiftDown()) { // Regular: Stepping
-        lightOn[rootLightIdx + noteAt] = true;
-      } else {
-        for(int c = 0; c < song.notesLive; c++)
-          lightOn[rootLightIdx + c] = true;
+      if (songPeriodMode) { // All bets off
+        lightOn[ccDb[dbRootSolo].lightIdx + LANE_PERIOD] = true;
+        lightOn[ccDb[dbRootMute].lightIdx + LANE_PERIOD] = true;
+      }
+      { // Set exactly one R
+        const int8_t rootLightIdx = ccDb[dbRootRec].lightIdx;
+        if (songPeriodMode || !shiftDown()) { // Regular: Stepping
+          lightOn[rootLightIdx + noteAt] = true;
+        } else {
+          for(int c = 0; c < song.notesLive; c++)
+            lightOn[rootLightIdx + c] = true;
+        }
       }
       // Set play if playing
       uniqueLitDown[CC_UNIQUE_PLAY-CC_UNIQUE_LITROOT] = playing == SongPlay;
@@ -333,7 +348,8 @@ public:
   // Round a period to a "usable" BPM
   unvirtual uint32_t roundPeriod(float period) {
     uint32_t blockSize = getBlockSize();
-    return roundf(period/blockSize)*blockSize;
+    float div = roundf(period/blockSize)*blockSize;
+    return div<blockSize ? blockSize : (uint32_t)div;
   }
 
   bool shiftDown() {
@@ -391,12 +407,22 @@ debug1 = -1; debug2 = 0;
       bool laneValueChange = false;
       switch (info.group) {
         case CC_GROUP_SLIDER: {
-          laneValueChange = true;
-          song.notes[noteAt].slider[info.id] = value;
+          if (!(songPeriodMode && info.id != LANE_PERIOD)) {
+            laneValueChange = true;
+            (songPeriodMode ?
+              songPeriodNote :
+              song.notes[noteAt]
+            ).slider[info.id] = value;
+          }
         } break;
         case CC_GROUP_KNOB: {
-          laneValueChange = true;
-          song.notes[noteAt].knob[info.id] = value;
+          if (!(songPeriodMode && info.id != LANE_PERIOD)) {
+            laneValueChange = true;
+            (songPeriodMode ?
+              songPeriodNote :
+              song.notes[noteAt]
+            ).knob[info.id] = value;
+          }
         } break;
         case CC_GROUP_RECORD: {
           if (!shiftDown()) { // Normal: Change lane
@@ -425,8 +451,19 @@ debug1 = -1; debug2 = 0;
                 noteAt = 0;
               } break;
               case CC_UNIQUE_FF: {   // FAST-FORWARD
-                noteStep();
-                noteChanged();
+                if (!shiftDown()) {  // Regular
+                  noteStep();
+                  noteChanged();
+                } else {             // Timeshift
+                  songPeriodMode = true;
+                  // Must write songPeriodNote based on current period
+                  uint32_t songPeriod = song.period;
+                  // THE FOLLOWING IS WRONG
+                  songPeriod /= getBlockSize();
+                  songPeriodNote.knob[LANE_PERIOD] = songPeriod % 128;
+                  songPeriod /= 128;
+                  songPeriodNote.slider[LANE_PERIOD] = songPeriod > 127 ? 127 : songPeriod;
+                }
               } break;
               case CC_UNIQUE_REW: {  // REWIND
                 if (noteAt == 0)
@@ -444,9 +481,26 @@ debug1 = -1; debug2 = 0;
       // Control handled, execute consequences
       // A lane changed
       if (laneValueChange) {
-        debug2 = value;
-        paramSet(info.id, song.notes[noteAt]);
+        if (songPeriodMode) { // Can't change if laneValueChange
+          uint32_t songPeriod = song.period;
+          // Equation from eyeballing it: (x*4-1)^3 + 5*x + 1 from x=0 to x=1 (doesn't work)
+          // Try 1/60 instead (bad)
+          float x = songPeriodNote.slider[LANE_PERIOD]/128.0 + (songPeriodNote.knob[LANE_PERIOD]+1)*KNOB_MAG/128.0/128.0;
+          debug1 = x * 128 * 128;
+          x = 240.0f / x;
+          song.period = roundPeriod(x);
+          nextStep += (song.period - songPeriod);
+          debug2 = song.period;
+        } else { // Regular
+          debug1 = info.id + 1;
+          debug2 = value;
+          paramSet(info.id, song.notes[noteAt]);
+        }
       }
+
+      // Handle modes/apps
+      if (songPeriodMode && !(shiftDown() && uniqueLitDown[CC_UNIQUE_FF-CC_UNIQUE_LITROOT]))
+        songPeriodMode = false;
 
       // Lights may have changed
       updateLights();
@@ -480,7 +534,7 @@ debug1 = -1; debug2 = 0;
         readyLights();
 
         noteStep();
-        nextStep += song.period;
+        nextStep = song.period;
 
         noteChanged();
       }
