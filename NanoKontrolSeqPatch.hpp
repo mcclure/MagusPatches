@@ -383,24 +383,33 @@ debug1 = -1; debug2 = 0;
           noteAt = info.id;
           noteChanged();
         } break;
-        case CC_GROUP_UNIQUE_UNLIT: {
-          if (info.id == CC_UNIQUE_PLAY && value>0) {
-            // FIXME: Abstract this
-            // FIXME: This is all wrong, this is assuming it runs every frame but we only get notifications on change
-//            uint8_t &button = buttonState[CC_UNIQUE_PLAY];
-            if (playing == SongPlay) {
-              playing = SongStop;
-            } else {
-              playing = SongPlay;
-            }
-          }
-        } break;
-        case CC_GROUP_UNIQUE_LIT: {
+        case CC_GROUP_UNIQUE_LIT:
           uniqueLitDown[info.id-CC_UNIQUE_LITROOT] = value>0;
-
-          if (info.id == CC_UNIQUE_STOP && value>0) {
-            playing = SongStop;
-            noteAt = 0;
+          // FALL THROUGH:
+        case CC_GROUP_UNIQUE_UNLIT: {
+          if (value>0) {
+            switch (info.id) {
+              case CC_UNIQUE_PLAY: { // PLAY BUTTON
+                if (playing == SongPlay) {
+                  playing = SongStop;
+                } else {
+                  playing = SongPlay;
+                }
+              } break;
+              case CC_UNIQUE_STOP: { // STOP BUTTON
+                playing = SongStop;
+                noteAt = 0;
+              } break;
+              case CC_UNIQUE_FF: {   // FAST-FORWARD
+                noteAt++;
+                noteAt %= NOTE_COUNT;
+                noteChanged();
+              } break;
+              case CC_UNIQUE_REW: {  // REWIND
+                noteAt = (noteAt - 1 + NOTE_COUNT) % NOTE_COUNT;
+                noteChanged();
+              }
+            }
           }
         } break;
         default:break;
