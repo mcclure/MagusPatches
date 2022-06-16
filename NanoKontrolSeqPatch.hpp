@@ -151,6 +151,7 @@ struct Note {
 struct Song {
   Note notes[NOTE_COUNT];
   uint32_t period;            // Step length in samples
+  uint8_t notesLive;
 };
 
 enum SongState {
@@ -257,6 +258,7 @@ public:
       memset(target.notes[c].knob, KNOB_MIDPOINT, sizeof(target.notes[c].knob));
     }
     target.period = defaultPeriod();
+    target.notesLive = NOTE_COUNT;
   }
 
   // Hard set a light on or off (bypasses caching)
@@ -279,7 +281,13 @@ public:
     if (needLights) {
       // Set "obvious" state
       // Set exactly one R
-      lightOn[ccDb[dbRootRec].lightIdx + noteAt] = true;
+      const int8_t rootLightIdx = ccDb[dbRootRec].lightIdx;
+      if (!shiftDown()) { // Regular: Stepping
+        lightOn[rootLightIdx + noteAt] = true;
+      } else {
+        for(int c = 0; c < song.notesLive; c++)
+          lightOn[rootLightIdx + c] = true;
+      }
       // Set play if playing
       uniqueLitDown[CC_UNIQUE_PLAY-CC_UNIQUE_LITROOT] = playing == SongPlay;
       uniqueLitDown[CC_UNIQUE_STOP-CC_UNIQUE_LITROOT] = playing == SongStop;
@@ -304,6 +312,13 @@ public:
       (n.knob[lane]-KNOB_MIDPOINT)/(KNOB_MIDPOINT*KNOB_RADIX));
   }
 
+  void noteStep() {
+    if (noteAt >= song.notesLive-1)
+      noteAt = 0;
+    else
+      noteAt++;
+  }
+
   void noteChanged() {
     Note &n = song.notes[noteAt];
     for(int c = 0; c < LANE_COUNT; c++)
@@ -319,6 +334,10 @@ public:
   unvirtual uint32_t roundPeriod(float period) {
     uint32_t blockSize = getBlockSize();
     return roundf(period/blockSize)*blockSize;
+  }
+
+  bool shiftDown() {
+    return uniqueLitDown[CC_UNIQUE_SHIFT-CC_UNIQUE_LITROOT]; 
   }
 
   // Process MIDI
@@ -380,8 +399,12 @@ debug1 = -1; debug2 = 0;
           song.notes[noteAt].knob[info.id] = value;
         } break;
         case CC_GROUP_RECORD: {
-          noteAt = info.id;
-          noteChanged();
+          if (!shiftDown()) { // Normal: Change lane
+            noteAt = info.id;
+            noteChanged();
+          } else {            // Shifted: Change song-loop length
+            song.notesLive = info.id + 1;
+          }
         } break;
         case CC_GROUP_UNIQUE_LIT:
           uniqueLitDown[info.id-CC_UNIQUE_LITROOT] = value>0;
@@ -397,16 +420,19 @@ debug1 = -1; debug2 = 0;
                 }
               } break;
               case CC_UNIQUE_STOP: { // STOP BUTTON
-                playing = SongStop;
+                playing = SongStop; // This is OK because drone does nothing yet!
+                // playing = shiftDown() || playing == SongDrone ? SongStop : SongDrone;
                 noteAt = 0;
               } break;
               case CC_UNIQUE_FF: {   // FAST-FORWARD
-                noteAt++;
-                noteAt %= NOTE_COUNT;
+                noteStep();
                 noteChanged();
               } break;
               case CC_UNIQUE_REW: {  // REWIND
-                noteAt = (noteAt - 1 + NOTE_COUNT) % NOTE_COUNT;
+                if (noteAt == 0)
+                  noteAt = song.notesLive-1;
+                else
+                  noteAt--;
                 noteChanged();
               }
             }
@@ -453,8 +479,7 @@ debug1 = -1; debug2 = 0;
       if (nextStep <= 0) {
         readyLights();
 
-        noteAt++;
-        noteAt %= NOTE_COUNT;
+        noteStep();
         nextStep += song.period;
 
         noteChanged();
