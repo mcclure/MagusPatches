@@ -182,11 +182,14 @@ private:
     uint8_t lightDbIdx[LIGHT_COUNT]; // lightIdx to DB idx
     uint8_t dbRootRec, dbRootMute, dbRootSolo, dbUniqueLit[UNIQUE_LIT_COUNT]; // db idx
     bool uniqueLitDown[UNIQUE_LIT_COUNT]; // id minus CC_UNIQUE_LITROOT
+    bool writeDown[LANE_COUNT];
+    bool lockDown;
     //uint8_t buttonState[CC_UNIQUE_COUNT]; // ButtonState // TODO clarify difference from uniqueLitDown
 
     // UI state // TODO: "Apps"?
     bool songPeriodMode;
     Note songPeriodNote; // FIXME: Store one lane not all 8!
+    Note lastValue;
 
     // Song
     Song song;
@@ -212,7 +215,9 @@ public:
 //    timeAt = 0;
     nextStep = 0;
     needLights = true;
+    lockDown = false;
     loadResource(0);
+    memcpy(&lastValue, &song.notes[0], sizeof(lastValue));
 
     // Register all ports as outputs
     char scratch[5] = {0,0, 0, '>',0};
@@ -325,7 +330,6 @@ public:
     if (needLights) {
       // Set "obvious" state
       if (songPeriodMode) { // All bets off
-        lightOn[ccDb[dbRootSolo].lightIdx + LANE_PERIOD] = true;
         lightOn[ccDb[dbRootMute].lightIdx + LANE_PERIOD] = true;
       }
       { // Set exactly one R
@@ -337,6 +341,13 @@ public:
             lightOn[rootLightIdx + c] = true;
         }
       }
+      if (0) { // Set all relevant S'es
+        const int8_t rootLightIdx = ccDb[dbRootSolo].lightIdx;
+        for(int c = 0; c < LANE_COUNT; c++)
+          if (writeDown[c])
+            lightOn[rootLightIdx + c] = true;
+      }
+
       // Set play if playing
       uniqueLitDown[CC_UNIQUE_PLAY-CC_UNIQUE_LITROOT] = playing == SongPlay;
       uniqueLitDown[CC_UNIQUE_STOP-CC_UNIQUE_LITROOT] = playing == SongStop;
@@ -344,6 +355,8 @@ public:
       // Send light changes
       for(unsigned int c = 0; c < UNIQUE_LIT_COUNT; c++)
         lightOn[ccDb[dbUniqueLit[c]].lightIdx] = uniqueLitDown[c];
+      if (lockDown)
+        lightOn[ccDb[dbUniqueLit[CC_UNIQUE_REW-CC_UNIQUE_LITROOT]].lightIdx] = true;
       for(unsigned int c = 0; c < LIGHT_COUNT; c++) {
         unsigned int cc = ccDb[lightDbIdx[c]].cc;
         if (lightOn[c] != lightOnWas[c]) {
@@ -439,23 +452,32 @@ debug1 = -1; debug2 = 0;
       // Handle control
       CcInfo &info = ccDb[ccIdx];
       bool laneValueChange = false;
+#define LANE_ALLOWED(lane) (!lockDown || writeDown[lane])
+#define LANE_WRITE(lane, field, value) { \
+        if (!(songPeriodMode && (lane) != LANE_PERIOD)) { \
+          laneValueChange = true; \
+          (songPeriodMode ? \
+            songPeriodNote : \
+            song.notes[noteAt] \
+          ).field[lane] = value; \
+        } \
+      }
+#define LANE_WRITE_SOLO(lane) { \
+        LANE_WRITE(lane, slider, lastValue.slider[lane]); \
+        LANE_WRITE(lane, knob, lastValue.knob[lane]); \
+      }
+
       switch (info.group) {
         case CC_GROUP_SLIDER: {
-          if (!(songPeriodMode && info.id != LANE_PERIOD)) {
-            laneValueChange = true;
-            (songPeriodMode ?
-              songPeriodNote :
-              song.notes[noteAt]
-            ).slider[info.id] = value;
+          lastValue.slider[info.id] = value;
+          if (LANE_ALLOWED(info.id)) {
+            LANE_WRITE(info.id, slider, value);
           }
         } break;
         case CC_GROUP_KNOB: {
-          if (!(songPeriodMode && info.id != LANE_PERIOD)) {
-            laneValueChange = true;
-            (songPeriodMode ?
-              songPeriodNote :
-              song.notes[noteAt]
-            ).knob[info.id] = value;
+          lastValue.knob[info.id] = value;
+          if (LANE_ALLOWED(info.id)) {
+            LANE_WRITE(info.id, knob, value);
           }
         } break;
         case CC_GROUP_RECORD: {
@@ -464,6 +486,14 @@ debug1 = -1; debug2 = 0;
             noteChanged();
           } else {            // Shifted: Change song-loop length
             song.notesLive = info.id + 1;
+          }
+        } break;
+        case CC_GROUP_SOLO: {
+          bool down = value>0;
+          writeDown[info.id] = down;
+
+          if (down) {
+            LANE_WRITE_SOLO(info.id);
           }
         } break;
         case CC_GROUP_UNIQUE_LIT:
@@ -500,11 +530,15 @@ debug1 = -1; debug2 = 0;
                 }
               } break;
               case CC_UNIQUE_REW: {  // REWIND
-                if (noteAt == 0)
-                  noteAt = song.notesLive-1;
-                else
-                  noteAt--;
-                noteChanged();
+                if (!shiftDown()) {
+                  if (noteAt == 0)
+                    noteAt = song.notesLive-1;
+                  else
+                    noteAt--;
+                  noteChanged();
+                } else {
+                  lockDown = !lockDown;
+                }
               } break;
               case CC_UNIQUE_REC: {
                 if (!shiftDown()) { // Save
@@ -528,7 +562,7 @@ debug1 = -1; debug2 = 0;
       // Control handled, execute consequences
       // A lane changed
       if (laneValueChange) {
-        if (songPeriodMode) { // Can't change if laneValueChange
+        if (songPeriodMode) { // Don't check lane because assume laneValueChange checked that already
           uint32_t songPeriod = song.period;
           // Equation from eyeballing it: (x*4-1)^3 + 5*x + 1 from x=0 to x=1 (doesn't work)
           // Try 1/60 instead (bad)
@@ -582,6 +616,13 @@ debug1 = -1; debug2 = 0;
 
         noteStep();
         nextStep = song.period;
+
+        for (int c = 0; c < LANE_COUNT; c++) {
+          bool laneValueChange; // Unused
+          if (writeDown[c]) { // FIXME: This writes tempo in song period mode, but that's unnecessary
+            LANE_WRITE_SOLO(c);
+          }
+        }
 
         noteChanged();
       }
