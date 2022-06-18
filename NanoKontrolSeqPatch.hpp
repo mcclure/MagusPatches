@@ -70,70 +70,69 @@ struct CcInfo {
   int8_t lightIdx; // Index in lightOn/lightDbIdx, always -1 for non-light buttons
 };
 
-// This could be much simpler if I switched out the supported nanoKontrol2 profile
-// to one where there were no gaps in the CC order. However I want to stay as close
-// to the default spec as possible to not interfere with other apps using the device
+// This requires a special NanoKontrol2 configuration where the CCs are
+// carefully chosen to prevent collisions with the default Magus control CCs
 #define CC_COUNT 51
 #define LIGHT_COUNT 30
-CcInfo ccDb[CC_COUNT] = {
-  {0, CC_GROUP_SLIDER, 0},
-  {1, CC_GROUP_SLIDER, 1},
-  {2, CC_GROUP_SLIDER, 2},
-  {3, CC_GROUP_SLIDER, 3},
-  {4, CC_GROUP_SLIDER, 4},
-  {5, CC_GROUP_SLIDER, 5},
-  {6, CC_GROUP_SLIDER, 6},
-  {7, CC_GROUP_SLIDER, 7},
+CcInfo ccDb[CC_COUNT] = {  // Comment indicates NanoKontrol2 default CC
+  {2, CC_GROUP_SLIDER, 0}, // 0
+  {3, CC_GROUP_SLIDER, 1}, // 1
+  {4, CC_GROUP_SLIDER, 2}, // 2
+  {5, CC_GROUP_SLIDER, 3}, // 3
+  {6, CC_GROUP_SLIDER, 4}, // 4
+  {7, CC_GROUP_SLIDER, 5}, // 5
+  {8, CC_GROUP_SLIDER, 6}, // 6
+  {9, CC_GROUP_SLIDER, 7}, // 7
 
-  {16, CC_GROUP_KNOB, 0},
-  {17, CC_GROUP_KNOB, 1},
-  {18, CC_GROUP_KNOB, 2},
-  {19, CC_GROUP_KNOB, 3},
-  {20, CC_GROUP_KNOB, 4},
-  {21, CC_GROUP_KNOB, 5},
-  {22, CC_GROUP_KNOB, 6},
-  {23, CC_GROUP_KNOB, 7},
+  {10, CC_GROUP_KNOB, 0},  // 16
+  {11, CC_GROUP_KNOB, 1},  // 17
+  {14, CC_GROUP_KNOB, 2},  // 18
+  {15, CC_GROUP_KNOB, 3},  // 19
+  {16, CC_GROUP_KNOB, 4},  // 20
+  {17, CC_GROUP_KNOB, 5},  // 21
+  {18, CC_GROUP_KNOB, 6},  // 22
+  {19, CC_GROUP_KNOB, 7},  // 23
 
-  {32, CC_GROUP_SOLO, 0},
-  {33, CC_GROUP_SOLO, 1},
-  {34, CC_GROUP_SOLO, 2},
-  {35, CC_GROUP_SOLO, 3},
-  {36, CC_GROUP_SOLO, 4},
-  {37, CC_GROUP_SOLO, 5},
-  {38, CC_GROUP_SOLO, 6},
-  {39, CC_GROUP_SOLO, 7},
+  {25, CC_GROUP_SOLO, 0},  // 32
+  {26, CC_GROUP_SOLO, 1},  // 33
+  {27, CC_GROUP_SOLO, 2},  // 34
+  {28, CC_GROUP_SOLO, 3},  // 35
+  {29, CC_GROUP_SOLO, 4},  // 36
+  {30, CC_GROUP_SOLO, 5},  // 37
+  {31, CC_GROUP_SOLO, 6},  // 38
+  {32, CC_GROUP_SOLO, 7},  // 39
 
-  {41, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_PLAY},
-  {42, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_STOP},
-  {43, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_REW},
-  {44, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_FF},
-  {45, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_REC},
-  {46, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_SHIFT},
+  {33, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_PLAY}, // 41
+  {34, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_STOP},   // 42
+  {35, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_REW},    // 43
+  {36, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_FF},     // 44
+  {37, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_REC},    // 45
+  {38, CC_GROUP_UNIQUE_LIT, CC_UNIQUE_SHIFT},  // 46
 
-  {48, CC_GROUP_MUTE, 0},
-  {49, CC_GROUP_MUTE, 1},
-  {50, CC_GROUP_MUTE, 2},
-  {51, CC_GROUP_MUTE, 3},
-  {52, CC_GROUP_MUTE, 4},
-  {53, CC_GROUP_MUTE, 5},
-  {54, CC_GROUP_MUTE, 6},
-  {55, CC_GROUP_MUTE, 7},
+  {39, CC_GROUP_MUTE, 0},  // 48
+  {40, CC_GROUP_MUTE, 1},  // 49
+  {41, CC_GROUP_MUTE, 2},  // 50
+  {42, CC_GROUP_MUTE, 3},  // 51
+  {43, CC_GROUP_MUTE, 4},  // 52
+  {44, CC_GROUP_MUTE, 5},  // 53
+  {45, CC_GROUP_MUTE, 6},  // 54
+  {46, CC_GROUP_MUTE, 7},  // 55
 
-  {58, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_L},
-  {59, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_R},
+  {47, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_L}, // 58
+  {48, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_SONG_R}, // 59
 
-  {60, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_CLICK},
-  {61, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_L},
-  {62, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_R},
+  {49, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_CLICK}, // 60
+  {50, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_L},     // 61
+  {51, CC_GROUP_UNIQUE_UNLIT, CC_UNIQUE_MENU_R},     // 62
 
-  {64, CC_GROUP_RECORD, 0},
-  {65, CC_GROUP_RECORD, 1},
-  {66, CC_GROUP_RECORD, 2},
-  {67, CC_GROUP_RECORD, 3},
-  {68, CC_GROUP_RECORD, 4},
-  {69, CC_GROUP_RECORD, 5},
-  {70, CC_GROUP_RECORD, 6},
-  {71, CC_GROUP_RECORD, 7},
+  {52, CC_GROUP_RECORD, 0}, // 64
+  {53, CC_GROUP_RECORD, 1}, // 65
+  {54, CC_GROUP_RECORD, 2}, // 66
+  {55, CC_GROUP_RECORD, 3}, // 67
+  {56, CC_GROUP_RECORD, 4}, // 68
+  {57, CC_GROUP_RECORD, 5}, // 69
+  {58, CC_GROUP_RECORD, 6}, // 70
+  {59, CC_GROUP_RECORD, 7}, // 71
 };
 
 #if 0
