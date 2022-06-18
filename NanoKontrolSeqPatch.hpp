@@ -340,7 +340,7 @@ public:
             lightOn[rootLightIdx + c] = true;
         }
       }
-      if (0) { // Set all relevant S'es
+      { // Set all relevant S'es
         const int8_t rootLightIdx = ccDb[dbRootSolo].lightIdx;
         for(int c = 0; c < LANE_COUNT; c++)
           if (writeDown[c])
