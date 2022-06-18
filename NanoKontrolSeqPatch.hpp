@@ -13,6 +13,7 @@
 
 #define LANE_COUNT 8
 #define NOTE_COUNT (LANE_COUNT)
+#define SONG_COUNT (LANE_COUNT)
 // This lane is the "BPM"
 #define LANE_PERIOD 7
 #define KNOB_MIDPOINT 64
@@ -189,6 +190,7 @@ private:
 
     // Song
     Song song;
+    int32_t songId;
 
     // Player state
     SongState playing;
@@ -210,7 +212,7 @@ public:
 //    timeAt = 0;
     nextStep = 0;
     needLights = true;
-    initSong(song);
+    loadResource(0);
 
     // Register all ports as outputs
     char scratch[5] = {0,0, 0, '>',0};
@@ -269,6 +271,38 @@ public:
     }
     target.period = defaultPeriod();
     target.notesLive = NOTE_COUNT;
+  }
+
+  // Switch to a specific resource
+  unvirtual void loadResource(int _songId) {
+    songId = _songId;
+    char name[12] = "nk2seqX.dat";
+    name[6] = songId+1;
+    Resource* resource = NULL; //getResource(name);
+    if (resource && resource->getSize() >= (sizeof(Song) + 4)) {
+      uint8_t *data = (uint8_t *)resource->getData();
+      //uint32_t *idWord = data;
+      data += 4;
+      memcpy(&song, data, sizeof(song));
+    } else {
+      initSong(song);
+    }
+  }
+
+  void saveResource() {
+  #if 0
+    char name[12] = "nk2seqX.dat";
+    name[6] = songId+1;
+    size_t size = sizeof(Song)+4;
+    uint8_t *data = (uint8_t *)malloc(size);
+    uint32_t *idWord = (uint32_t *)data;
+    *idWord = 0x1;
+    data++;
+    memcpy(data, sizeof(Song), &song);
+    Resource *resource = new Resource(name, size, data);
+    Resource::destroy(resource);
+    free(data);
+  #endif
   }
 
   // Hard set a light on or off (bypasses caching)
@@ -471,7 +505,20 @@ debug1 = -1; debug2 = 0;
                 else
                   noteAt--;
                 noteChanged();
-              }
+              } break;
+              case CC_UNIQUE_REC: {
+                if (!shiftDown()) { // Save
+                  saveResource();
+                } else { // Load
+                  loadResource(songId);
+                }
+              } break;
+              case CC_UNIQUE_SONG_L: {
+                loadResource((songId - 1 + SONG_COUNT)%SONG_COUNT);
+              } break;
+              case CC_UNIQUE_SONG_R: {
+                loadResource((songId + 1)%SONG_COUNT);
+              } break;
             }
           }
         } break;
