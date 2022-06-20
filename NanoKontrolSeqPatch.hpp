@@ -16,18 +16,22 @@
 #define SONG_COUNT (LANE_COUNT)
 // This lane is the "BPM"
 #define LANE_PERIOD 7
+#define LANE_LTICK 0
+#define LANE_RTICK 1
+#define LANE_PERIODMODE_SPECIAL(x) ((x)==LANE_PERIOD||(x)==LANE_LTICK||(x)==LANE_RTICK)
 #define KNOB_MIDPOINT 64
 // The knob crosses two slider ticks on either side. Set to 1.0 for finest control
 #define KNOB_MAG 2.0
 #define KNOB_RADIX (127.0/KNOB_MAG)
 // Includes all lightable uniques, including PLAY
 #define UNIQUE_LIT_COUNT 6
-// If 0, will run for only 24 hours and 51 minutes and then there will be an audible glitch.
-// If 1, will be able to run continuously for 12 million years
+// // If 0, will run for only 24 hours and 51 minutes and then there will be an audible glitch.
+// // If 1, will be able to run continuously for 12 million years
 // #define LONG_RUNNING 0 // Wait... do I need a global timer?
 #define DEFAULT_BPM 140
+#define TICK_SUSTAIN 4
 
-// If you see "unvirtual" on a method, it means nothing, I'm just documenting
+// If you see "unvirtual" on a method, it does nothing, I'm just documenting that
 // this method CANNOT be made virtual because it is called from the constructor
 // API methods assumed constructor-safe: getBlockSize, getSampleRate
 #define unvirtual
@@ -153,7 +157,8 @@ struct Note {
 struct Song {
   Note notes[NOTE_COUNT];
   uint32_t period;            // Step length in samples
-  uint8_t notesLive;
+  int8_t tick[2];            // bitshift for L and R channel click tracks (0x80 == 0)
+  uint8_t notesLive;          // How many steps before repeat
 };
 
 enum SongState {
@@ -198,7 +203,8 @@ private:
     SongState playing;
     uint8_t noteAt;  // Current sequencer step
 //    TimeCode timeAt; // Current time progression
-    int32_t nextStep;
+    int32_t nextStep;  // How many samples to next sample?
+    int32_t stepCount; // How many steps to next tick? (WIP)
 
     bool needLights; // If true, lightOn has been updated
 
@@ -275,6 +281,7 @@ public:
       memset(target.notes[c].knob, KNOB_MIDPOINT, sizeof(target.notes[c].knob));
     }
     target.period = defaultPeriod();
+    memset(target.tick, 1, sizeof(target.tick));
     target.notesLive = NOTE_COUNT;
   }
 
@@ -330,6 +337,8 @@ public:
     if (needLights) {
       // Set "obvious" state
       if (songPeriodMode) { // All bets off
+        lightOn[ccDb[dbRootMute].lightIdx + LANE_LTICK] = true;
+        lightOn[ccDb[dbRootMute].lightIdx + LANE_RTICK] = true;
         lightOn[ccDb[dbRootMute].lightIdx + LANE_PERIOD] = true;
       }
       { // Set exactly one R
@@ -457,7 +466,7 @@ debug1 = -1; debug2 = 0;
       bool laneValueChange = false;
 #define LANE_ALLOWED(lane) (!lockDown || writeDown[lane])
 #define LANE_WRITE(lane, field, value) { \
-        if (!(songPeriodMode && (lane) != LANE_PERIOD)) { \
+        if (!(songPeriodMode && !LANE_PERIODMODE_SPECIAL(lane))) { \
           laneValueChange = true; \
           if (performDown) { \
             performTriggered = true; \
@@ -523,6 +532,7 @@ debug1 = -1; debug2 = 0;
                   playing = SongStop; // This is OK because drone does nothing yet!
                   // playing = shiftDown() || playing == SongDrone ? SongStop : SongDrone;
                   noteAt = 0;
+                  stepCount = 0;
                 }
               } break;
               case CC_UNIQUE_FF: {   // FAST-FORWARD
@@ -577,16 +587,30 @@ debug1 = -1; debug2 = 0;
       // Control handled, execute consequences
       // A lane changed
       if (laneValueChange) {
-        if (songPeriodMode) { // Don't check lane because assume laneValueChange checked that already
-          uint32_t songPeriod = song.period;
-          // Equation from eyeballing it: (x*4-1)^3 + 5*x + 1 from x=0 to x=1 (doesn't work)
-          // Try 1/60 instead (bad)
-          float x = songPeriodNote.slider[LANE_PERIOD]/128.0 + (songPeriodNote.knob[LANE_PERIOD]+1)*KNOB_MAG/128.0/128.0;
-          debug1 = x * 128 * 128;
-          x = 240.0f / x;
-          song.period = roundPeriod(x);
-          nextStep += (song.period - songPeriod);
-          debug2 = song.period;
+        if (songPeriodMode) {
+          switch (info.id) {
+            case LANE_LTICK:
+            case LANE_RTICK: {
+              uint8_t tickId = info.id-LANE_LTICK;
+              int8_t &tick = song.tick[tickId];
+              tick = value; tick -= 62; tick /= 4; // -62 so bottom two ticks exactly are -16/+16
+              if (tick == -1 || tick == 1)
+                tick = 1;
+              debug1 = tickId;
+              debug2 = tick;
+            } break;
+            case LANE_PERIOD: {
+              uint32_t songPeriod = song.period;
+              // Equation from eyeballing it: (x*4-1)^3 + 5*x + 1 from x=0 to x=1 (doesn't work)
+              // Try 1/60 instead (bad)
+              float x = songPeriodNote.slider[LANE_PERIOD]/128.0 + (songPeriodNote.knob[LANE_PERIOD]+1)*KNOB_MAG/128.0/128.0;
+              debug1 = x * 128 * 128;
+              x = 240.0f / x;
+              song.period = roundPeriod(x);
+              nextStep += (song.period - songPeriod);
+              debug2 = song.period;
+            } break;
+          }
         } else { // Regular
           debug1 = info.id + 1;
           debug2 = value;
@@ -608,28 +632,52 @@ debug1 = -1; debug2 = 0;
 
   // Process audio 
   void processAudio(AudioBuffer& buffer){
+    float *leftData, *rightData;
+    int bufferSize;
     { // Audio silence
       FloatArray left = buffer.getSamples(LEFT_CHANNEL);
       FloatArray right = buffer.getSamples(RIGHT_CHANNEL);
 
       // Buffers
-      int size = min(left.getSize(), right.getSize());
-      float *leftData = left.getData();
-      float *rightData = right.getData();
+      bufferSize = min(left.getSize(), right.getSize());
+      leftData = left.getData();
+      rightData = right.getData();
 
       // Write sample
-      memset(leftData,  0, size*sizeof(float));
-      memset(rightData, 0, size*sizeof(float));
+      memset(leftData,  0, bufferSize*sizeof(float));
+      memset(rightData, 0, bufferSize*sizeof(float));
     }
 
     uint32_t timeStep = getBlockSize();
     if (playing == SongPlay) {
+      // Tick refers to "click track" code
+      // This is WIP and pretty bad
+      // The correct(?) way to do this is probably to make a 16th note one block
+      for(int ch = 0; ch < 2; ch++) {
+        int tickEvery = song.period;
+        int tickOffset = nextStep >= 0 ? song.period - nextStep : 0; // "progress" 
+        int8_t &tick = song.tick[ch];
+        if (tick < 0) {
+          tickEvery /= (-tick);
+          tickOffset %= tickEvery;
+        } else if (tick > 0) {
+          tickEvery *= tick;
+          tickOffset += song.period*(stepCount % tick);
+        }
+        for(int c = tickOffset; c < bufferSize; c += tickEvery) {
+          for(int d = 0; d < TICK_SUSTAIN && (c+d)<bufferSize; d++) {
+            (ch ? rightData : leftData)[c+d] = 1;
+          }
+        }
+      }
+
       nextStep -= timeStep;
 
       if (nextStep <= 0) {
         readyLights();
 
         noteStep();
+        stepCount++;
         nextStep = song.period;
 
         if (!performDown) {
