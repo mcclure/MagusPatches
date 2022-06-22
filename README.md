@@ -27,10 +27,11 @@ Does nothing at all. I load this as my "patch 1" so that when the device first b
 Displays incoming MIDI messages to the screen. Useful as a development tool or for debugging MIDI. Requires a device with a screen (Magus or Genius).
 
 Line format: meaningless incrementing number; MIDI message as 8 nibbles of hex; "c" followed by channel number; and then exactly one of:
-	* (For normal note) ON or OFF, note value
-	* (Control Change) "CC", hex of controller number, hex of controller value
-	* (Pitchbend) "BD", + or -, decimal pitchbend value
-	* (Any other message) "stat", hex of status code
+
+* (For normal note) ON or OFF, note value
+* (Control Change) "CC", hex of controller number, hex of controller value
+* (Pitchbend) "BD", + or -, decimal pitchbend value
+* (Any other message) "stat", hex of status code
 
 ## NanoKontrolSeq
 
