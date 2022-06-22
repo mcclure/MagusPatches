@@ -37,6 +37,7 @@ Line format: meaningless incrementing number; MIDI message as 8 nibbles of hex; 
 Interactive CV sequencer based on the Kork NanoKontrol2 MIDI controller. Currently designed for use with the Magus, and has not been tested on other OpenWare devices.
 
 To use, obtain a NanoKontrol2 and use the Korg Kontrol software for desktop PC to configure it with the file [UserFiles/OpenwareNanoKontrol2-Safe.nktrl2_data](UserFiles/OpenwareNanoKontrol2-Safe.nktrl2_data). If you then plug in the NanoKontrol2 to the Magus "USB HOST" port and run this patch, the buttons will take on the following functions:
+
 	* "R" buttons 1-8: Selects one of 8 "notes" in the current sequence. Should light up depending on what note is playing.
 	* Sliders 1-8: Sets the value for 8 "lanes" (CV output values) 0-8V.
 	* Knobs 1-8: Finetunes the value for the 8 "lanes"
@@ -45,6 +46,7 @@ To use, obtain a NanoKontrol2 and use the Korg Kontrol software for desktop PC t
 	* << and >> : Step forward or back one note.
 	* "S" buttons 1-8: Special behavior in "lockdown" or "performance" mode (see below)
 	* "Cycle": This is the "Shift" button; it changes the meaning of certain other buttons:
+
 		* Cycle+R: Set the length of the pattern used by "Play" and <</>>
 		* Cycle+>>: When this is held down, lane 8 becomes a BPM control. (EXPERIMENTAL:) Also lane 1 and 2 control the relative rate of a "click track" that plays in the L and R audio output channels (in range "play 16 times per note" to "play once every 16 notes".
 		* Cycle+<<: Sequencer enters/leaves a "lockdown" mode where sliders and knobs have no effect. To change the value of a lane, hold the "S" button next to it. "<<" button will light up.
