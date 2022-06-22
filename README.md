@@ -22,6 +22,34 @@ This is a 4-oscillator synth voice with independent detune on each voice. Set th
 
 Does nothing at all. I load this as my "patch 1" so that when the device first boots up, the CPU load and power draw are as low as possible. Also on RebelTech [here](https://www.rebeltech.org/patch-library/patch/Silence).
 
+## MidiMonitor
+
+Displays incoming MIDI messages to the screen. Useful as a development tool or for debugging MIDI. Requires a device with a screen (Magus or Genius).
+
+Line format: meaningless incrementing number; MIDI message as 8 nibbles of hex; "c" followed by channel number; and then exactly one of:
+	* (For normal note) ON or OFF, note value
+	* (Control Change) "CC", hex of controller number, hex of controller value
+	* (Pitchbend) "BD", + or -, decimal pitchbend value
+	* (Any other message) "stat", hex of status code
+
+## NanoKontrolSeq
+
+Interactive CV sequencer based on the Kork NanoKontrol2 MIDI controller. Currently designed for use with the Magus, and has not been tested on other OpenWare devices.
+
+To use, obtain a NanoKontrol2 and use the Korg Kontrol software for desktop PC to configure it with the file [UserFiles/OpenwareNanoKontrol2-Safe.nktrl2_data](UserFiles/OpenwareNanoKontrol2-Safe.nktrl2_data). If you then plug in the NanoKontrol2 to the Magus "USB HOST" port and run this patch, the buttons will take on the following functions:
+	* "R" buttons 1-8: Selects one of 8 "notes" in the current sequence. Should light up depending on what note is playing.
+	* Sliders 1-8: Sets the value for 8 "lanes" (CV output values) 0-8V.
+	* Knobs 1-8: Finetunes the value for the 8 "lanes"
+	* Play: Cycle through the 8 notes. If already playing, will pause at the current note.
+	* Stop: Stop playing and reset to note 1.
+	* << and >> : Step forward or back one note.
+	* "S" buttons 1-8: Special behavior in "lockdown" or "performance" mode (see below)
+	* "Cycle": This is the "Shift" button; it changes the meaning of certain other buttons:
+		* Cycle+R: Set the length of the pattern used by "Play" and <</>>
+		* Cycle+>>: When this is held down, lane 8 becomes a BPM control. (EXPERIMENTAL:) Also lane 1 and 2 control the relative rate of a "click track" that plays in the L and R audio output channels (in range "play 16 times per note" to "play once every 16 notes".
+		* Cycle+<<: Sequencer enters/leaves a "lockdown" mode where sliders and knobs have no effect. To change the value of a lane, hold the "S" button next to it. "<<" button will light up.
+		* Cycle+STOP: (EXPERIMENTAL:) If sequencer is already in "lockdown" mode, enters a "performance" mode where sliders and knobs have no effect normally, and when the "S" button for a lane is held down the last value of that slider/knob takes precedence over the current note. The difference between "lockdown" and "performance" mode is that in lockdown mode "S"ending a slider value will overwrite the current note in the sequence, but in performance mode it will only "play" (but not be written).
+
 # Development helpers
 
 ## Test patches
@@ -29,6 +57,10 @@ Does nothing at all. I load this as my "patch 1" so that when the device first b
 ### ScreenSaver
 
 I wrote this patch to test the screen. It just draws random numbers in random positions.
+
+### NanoKontrolTestPatch
+
+If a Korg NanoKontrol2 is attached, flickers all the lights in an ascending pattern. This assumes a configuration set in the KORG KONTROL app where LEDs are set "externally", but it uses the default configuration rather than the "OpenwareNanoKontrol2-SAFE" configuration.
 
 ## MagusSim
 
