@@ -29,7 +29,7 @@
 // // If 1, will be able to run continuously for 12 million years
 // #define LONG_RUNNING 0 // Wait... do I need a global timer?
 #define DEFAULT_BPM 140
-#define TICK_SUSTAIN 4
+#define TICK_SUSTAIN 8
 
 // If you see "unvirtual" on a method, it does nothing, I'm just documenting that
 // this method CANNOT be made virtual because it is called from the constructor
